@@ -566,6 +566,58 @@ git diff HEAD~1 --name-only
 
 ---
 
+## Project Stats
+
+Built in a single Claude Code session using 28 parallel AI agents.
+
+| Category | Count | Details |
+|----------|-------|---------|
+| **Source code** | 52 files | 9,208 lines of Python |
+| **Tests** | 20 files | 7,530 lines, 472 test cases |
+| **Examples** | 6 files | 657 lines, all runnable standalone |
+| **Scripts** | 4 files | 2,028 lines (convert, download, eval, benchmark) |
+| **Configs** | 3 files | CNN, Transformer, LowDim YAML |
+| **PRDs** | 10 files | 9 component specs + build order |
+| **Total Python** | 82 files | **19,423 LOC** |
+| **Git commits** | 11 | Clean, atomic commit history |
+
+### Test Breakdown
+
+| Test Suite | Tests | What it validates |
+|------------|-------|-------------------|
+| Compat layer | 71 | Conv1d/2d, GroupNorm, BatchNorm numerics vs PyTorch |
+| Vision encoder | 19 | ResNet18/34/50 cross-framework, CropRandomizer |
+| UNet denoiser | 17 | ConditionalUnet1D shapes, gradient flow, local/global cond |
+| Transformer | 27 | TransformerForDiffusion, causal masks, all conditioning modes |
+| Schedulers | 30 | DDPM/DDIM step() vs HuggingFace diffusers |
+| Normalizer | 17 | Limits/gaussian modes, round-trip fidelity |
+| Policy | 13 | predict_action, compute_loss, differentiability |
+| Low-dim policies | 23 | UNet/image/lowdim variants, synthetic training |
+| Training | 38 | EMA, LR schedulers, checkpoint round-trip, loss decrease |
+| Dataset | 32 | Zarr loading, boundary padding, collation |
+| Integration | 10 | End-to-end train+inference, checkpoint, DDIM vs DDPM |
+| PushT env | 26 | Environment step/reset, runner metrics |
+| Weight conversion | 48 | Shape transposition, key mapping, forward pass match |
+| Benchmark | 19 | Latency, throughput, Metal GPU active |
+| Common utils | 41 | dict_apply, JsonLogger, validator, grad clipping |
+| Examples | 6 | Subprocess smoke tests |
+| Numerical stability | 5 | NaN/Inf propagation, mish overflow |
+| **Total** | **472** | |
+
+### Code Quality Gates
+
+| Gate | Status |
+|------|--------|
+| `ruff check` | 0 issues |
+| `ruff format` | All formatted |
+| Cross-framework validation | Conv1d, Conv2d, GroupNorm, BatchNorm, ResNet18/34/50, DDPM, DDIM |
+| Security audit | torch.load safe, zip slip protected, SHA-256 download |
+| Metal GPU audit | Zero CPU fallbacks in hot paths |
+| Memory audit | mx.eval() at all sync points, bounded deques |
+| 3x code review | Correctness, security, test quality |
+
+---
+
 ## Citation
 
 If you use this work, please cite the original Diffusion Policy paper:
