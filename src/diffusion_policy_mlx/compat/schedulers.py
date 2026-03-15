@@ -7,15 +7,14 @@ implementing only the API surface used by the upstream diffusion_policy codebase
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import mlx.core as mx
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Scheduler output container
 # ---------------------------------------------------------------------------
+
 
 class SchedulerOutput:
     """Simple container matching diffusers ``SchedulerOutput``."""
@@ -27,6 +26,7 @@ class SchedulerOutput:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _cosine_beta_schedule(num_train_timesteps: int, s: float = 0.008) -> np.ndarray:
     """Cosine schedule from *Improved DDPM* (Nichol & Dhariwal, 2021).
@@ -115,6 +115,7 @@ def _predict_epsilon(
 # ---------------------------------------------------------------------------
 # DDPMScheduler
 # ---------------------------------------------------------------------------
+
 
 class DDPMScheduler:
     """Denoising Diffusion Probabilistic Models scheduler.
@@ -228,6 +229,7 @@ class DDPMScheduler:
 # DDIMScheduler
 # ---------------------------------------------------------------------------
 
+
 class DDIMScheduler:
     """Denoising Diffusion Implicit Models scheduler.
 
@@ -261,9 +263,7 @@ class DDIMScheduler:
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = mx.cumprod(self.alphas)
 
-        self.final_alpha_cumprod = (
-            mx.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
-        )
+        self.final_alpha_cumprod = mx.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
         # Default full schedule
         self.timesteps = mx.arange(num_train_timesteps - 1, -1, -1)
@@ -301,9 +301,7 @@ class DDIMScheduler:
         prev_t = self._get_previous_timestep(t)
 
         alpha_bar_t = self.alphas_cumprod[t]
-        alpha_bar_prev = (
-            self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
-        )
+        alpha_bar_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
 
         # Predict x_0 and epsilon
         pred_x0 = _predict_x0(self.prediction_type, model_output, sample, alpha_bar_t)
@@ -316,9 +314,7 @@ class DDIMScheduler:
 
         # DDIM sigma — floor to prevent sqrt of negative from float rounding
         sigma_sq = (
-            (1.0 - alpha_bar_prev)
-            / (1.0 - alpha_bar_t)
-            * (1.0 - alpha_bar_t / alpha_bar_prev)
+            (1.0 - alpha_bar_prev) / (1.0 - alpha_bar_t) * (1.0 - alpha_bar_t / alpha_bar_prev)
         )
         sigma = eta * mx.sqrt(mx.maximum(sigma_sq, mx.array(0.0)))
 
@@ -340,6 +336,7 @@ class DDIMScheduler:
 # ---------------------------------------------------------------------------
 # Minimal config object
 # ---------------------------------------------------------------------------
+
 
 class _SchedulerConfig:
     """Tiny namespace so ``scheduler.config.num_train_timesteps`` works."""

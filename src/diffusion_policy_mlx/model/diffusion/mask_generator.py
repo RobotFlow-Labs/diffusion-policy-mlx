@@ -79,10 +79,12 @@ class LowdimMaskGenerator:
         time_mask = mx.broadcast_to(time_mask, (B, T, D))  # (B, T, D)
 
         # Build dim mask: obs dims are the last obs_dim dimensions
-        dim_flag = mx.concatenate([
-            mx.zeros((D - self.obs_dim,), dtype=mx.bool_),  # action dims
-            mx.ones((self.obs_dim,), dtype=mx.bool_),       # obs dims
-        ])
+        dim_flag = mx.concatenate(
+            [
+                mx.zeros((D - self.obs_dim,), dtype=mx.bool_),  # action dims
+                mx.ones((self.obs_dim,), dtype=mx.bool_),  # obs dims
+            ]
+        )
         is_obs_dim = mx.broadcast_to(dim_flag.reshape(1, 1, D), (B, T, D))
 
         obs_mask = time_mask & is_obs_dim
@@ -96,10 +98,12 @@ class LowdimMaskGenerator:
             action_time_mask = mx.broadcast_to(action_time_mask, (B, T, D))
 
             is_action_dim = mx.broadcast_to(
-                mx.concatenate([
-                    mx.ones((self.action_dim,), dtype=mx.bool_),
-                    mx.zeros((self.obs_dim,), dtype=mx.bool_),
-                ]).reshape(1, 1, D),
+                mx.concatenate(
+                    [
+                        mx.ones((self.action_dim,), dtype=mx.bool_),
+                        mx.zeros((self.obs_dim,), dtype=mx.bool_),
+                    ]
+                ).reshape(1, 1, D),
                 (B, T, D),
             )
             action_mask = action_time_mask & is_action_dim

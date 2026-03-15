@@ -11,7 +11,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Union
+from typing import Any, Dict, Sequence
 
 import mlx.core as mx
 import numpy as np

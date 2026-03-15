@@ -6,12 +6,11 @@ Only the subset actually used by upstream diffusion_policy is implemented.
 from typing import Optional, Tuple, Union
 
 import mlx.core as mx
-import mlx.nn as nn
-
 
 # ---------------------------------------------------------------------------
 # Activations
 # ---------------------------------------------------------------------------
+
 
 def mish(x: mx.array) -> mx.array:
     """``F.mish`` activation:  x * tanh(softplus(x)).
@@ -30,6 +29,7 @@ def silu(x: mx.array) -> mx.array:
 # ---------------------------------------------------------------------------
 # Padding
 # ---------------------------------------------------------------------------
+
 
 def pad_1d(
     x: mx.array,
@@ -76,6 +76,7 @@ def pad_1d(
 # ---------------------------------------------------------------------------
 # Interpolation
 # ---------------------------------------------------------------------------
+
 
 def interpolate_1d(
     x: mx.array,

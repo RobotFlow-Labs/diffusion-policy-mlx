@@ -20,8 +20,6 @@ from __future__ import annotations
 import argparse
 import logging
 import re
-import sys
-from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -231,7 +229,7 @@ def map_obs_encoder_key(key: str) -> Optional[str]:
 
     # Pattern 3: obs_encoder.{rest} - pass through with resnet mapping
     if key.startswith("obs_encoder."):
-        rest = key[len("obs_encoder."):]
+        rest = key[len("obs_encoder.") :]
         rest = map_resnet_key(rest)
         if not rest:
             return None
@@ -260,7 +258,7 @@ def map_key_path(pytorch_key: str) -> Optional[str]:
 
     # UNet model keys
     if pytorch_key.startswith("model."):
-        unet_key = pytorch_key[len("model."):]
+        unet_key = pytorch_key[len("model.") :]
         mapped = map_unet_key(unet_key)
         return f"model.{mapped}"
 
@@ -443,9 +441,7 @@ def convert_with_shape_matching(
         unmapped_source[key] = np_value
 
     # Build needed target info
-    needed_target_info = {
-        k: (k, target_param_shapes[k]) for k in needed_targets
-    }
+    needed_target_info = {k: (k, target_param_shapes[k]) for k in needed_targets}
 
     # Shape-based matching
     shape_mapping = shape_based_match(unmapped_source, needed_target_info)
@@ -478,8 +474,7 @@ def convert_checkpoint(
     """
     if not HAS_TORCH:
         raise RuntimeError(
-            "PyTorch is required for weight conversion. "
-            "Install with: pip install torch"
+            "PyTorch is required for weight conversion. Install with: pip install torch"
         )
 
     output = Path(output_dir)
@@ -524,9 +519,7 @@ def convert_checkpoint(
     # Extract and save normalizer
     normalizer_state = extract_normalizer(model_state)
     if normalizer_state:
-        logger.info(
-            "Saving normalizer state (%d entries)", len(normalizer_state)
-        )
+        logger.info("Saving normalizer state (%d entries)", len(normalizer_state))
         _save_weights(normalizer_state, output / f"normalizer.{format}", format)
 
     # Save conversion metadata
@@ -549,9 +542,7 @@ def convert_checkpoint(
     print(f"  Normalizer entries: {len(normalizer_state)}")
 
 
-def _save_weights(
-    weights: Dict[str, mx.array], path: Path, format: str
-) -> None:
+def _save_weights(weights: Dict[str, mx.array], path: Path, format: str) -> None:
     """Save weights in the specified format."""
     if format == "npz":
         mx.savez(str(path), **weights)
@@ -562,9 +553,7 @@ def _save_weights(
             np_weights = {k: np.array(v) for k, v in weights.items()}
             save_file(np_weights, str(path))
         except ImportError:
-            logger.warning(
-                "safetensors not installed, falling back to npz format"
-            )
+            logger.warning("safetensors not installed, falling back to npz format")
             npz_path = path.with_suffix(".npz")
             mx.savez(str(npz_path), **weights)
     else:

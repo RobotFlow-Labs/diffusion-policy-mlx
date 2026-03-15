@@ -7,18 +7,16 @@ the resulting features with low-dimensional observation features.
 Input images are expected in NCHW format (B, C, H, W).
 """
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Tuple, Union
 
 import mlx.core as mx
 import mlx.nn as nn
 
-from diffusion_policy_mlx.model.vision.crop_randomizer import CropRandomizer
 from diffusion_policy_mlx.compat.vision import (
-    Identity,
     clone_module,
     replace_submodules,
 )
-
+from diffusion_policy_mlx.model.vision.crop_randomizer import CropRandomizer
 
 # ImageNet normalization constants (NCHW layout for broadcasting)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -33,7 +31,7 @@ def _imagenet_normalize(x):
 
 
 class _Resizer(nn.Module):
-    """Bilinear resize for NCHW tensors."""
+    """Nearest-neighbor resize for NCHW tensors."""
 
     def __init__(self, h: int, w: int):
         super().__init__()
@@ -99,8 +97,10 @@ class MultiImageObsEncoder(nn.Module):
                     root_module=rgb_model,
                     predicate=lambda m: isinstance(m, nn.BatchNorm),
                     func=lambda m: nn.GroupNorm(
-                        num_groups=max(1, m.num_features // 16) if hasattr(m, 'num_features') else 4,
-                        dims=m.num_features if hasattr(m, 'num_features') else m.weight.shape[0],
+                        num_groups=(
+                            max(1, m.num_features // 16) if hasattr(m, "num_features") else 4
+                        ),
+                        dims=m.num_features if hasattr(m, "num_features") else m.weight.shape[0],
                     ),
                 )
             self.key_model_map["rgb"] = rgb_model
@@ -122,15 +122,25 @@ class MultiImageObsEncoder(nn.Module):
                     elif isinstance(rgb_model, dict):
                         this_model = rgb_model[key]
                     else:
-                        raise TypeError(f"rgb_model must be nn.Module or dict, got {type(rgb_model)}")
+                        raise TypeError(
+                            f"rgb_model must be nn.Module or dict, got {type(rgb_model)}"
+                        )
 
                     if use_group_norm:
                         this_model = replace_submodules(
                             root_module=this_model,
                             predicate=lambda m: isinstance(m, nn.BatchNorm),
                             func=lambda m: nn.GroupNorm(
-                                num_groups=max(1, m.num_features // 16) if hasattr(m, 'num_features') else 4,
-                                dims=m.num_features if hasattr(m, 'num_features') else m.weight.shape[0],
+                                num_groups=(
+                                    max(1, m.num_features // 16)
+                                    if hasattr(m, "num_features")
+                                    else 4
+                                ),
+                                dims=(
+                                    m.num_features
+                                    if hasattr(m, "num_features")
+                                    else m.weight.shape[0]
+                                ),
                             ),
                         )
                     self.key_model_map[key] = this_model

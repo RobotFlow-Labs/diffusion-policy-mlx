@@ -1,28 +1,29 @@
 """Tests for diffusion_policy_mlx.compat.tensor_ops."""
 
+import mlx.core as mx
 import numpy as np
 import pytest
-import mlx.core as mx
 
 from diffusion_policy_mlx.compat import (
-    is_tensor,
-    tensor_to_long,
-    tensor_to_float,
-    expand_as_batch,
+    cat,
     clamp,
-    zeros_like,
+    detach,
+    expand_as_batch,
+    flatten,
+    is_tensor,
     ones_like,
     randn_like,
-    unsqueeze,
     squeeze,
-    flatten,
-    detach,
-    cat,
     stack,
+    tensor_to_float,
+    tensor_to_long,
+    unsqueeze,
+    zeros_like,
 )
 
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -31,6 +32,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # is_tensor
 # ---------------------------------------------------------------------------
+
 
 class TestIsTensor:
     def test_mx_array_is_tensor(self):
@@ -50,6 +52,7 @@ class TestIsTensor:
 # tensor_to_long / tensor_to_float
 # ---------------------------------------------------------------------------
 
+
 class TestCasts:
     def test_to_long(self):
         x = mx.array([1.5, 2.7])
@@ -65,6 +68,7 @@ class TestCasts:
 # ---------------------------------------------------------------------------
 # expand_as_batch
 # ---------------------------------------------------------------------------
+
 
 class TestExpandAsBatch:
     def test_scalar(self):
@@ -90,6 +94,7 @@ class TestExpandAsBatch:
 # clamp
 # ---------------------------------------------------------------------------
 
+
 class TestClamp:
     def test_both_bounds(self):
         x = mx.array([-2.0, 0.5, 3.0])
@@ -110,6 +115,7 @@ class TestClamp:
 # ---------------------------------------------------------------------------
 # zeros_like / ones_like / randn_like
 # ---------------------------------------------------------------------------
+
 
 class TestLikeOps:
     def test_zeros_like(self):
@@ -135,6 +141,7 @@ class TestLikeOps:
 # unsqueeze / squeeze
 # ---------------------------------------------------------------------------
 
+
 class TestUnsqueezeSqueeze:
     def test_unsqueeze(self):
         x = mx.zeros((2, 3))
@@ -154,6 +161,7 @@ class TestUnsqueezeSqueeze:
 # ---------------------------------------------------------------------------
 # flatten
 # ---------------------------------------------------------------------------
+
 
 class TestFlatten:
     def test_flatten_default(self):
@@ -176,6 +184,7 @@ class TestFlatten:
 # detach
 # ---------------------------------------------------------------------------
 
+
 class TestDetach:
     def test_detach_returns_array(self):
         x = mx.array([1.0, 2.0])
@@ -187,6 +196,7 @@ class TestDetach:
 # ---------------------------------------------------------------------------
 # cat / stack
 # ---------------------------------------------------------------------------
+
 
 class TestCatStack:
     def test_cat_dim0(self):
@@ -217,6 +227,7 @@ class TestCatStack:
 # ---------------------------------------------------------------------------
 # Cross-framework numeric tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
 class TestCrossFramework:

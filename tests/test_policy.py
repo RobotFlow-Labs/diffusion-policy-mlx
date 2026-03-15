@@ -24,10 +24,10 @@ from diffusion_policy_mlx.policy.diffusion_unet_hybrid_image_policy import (
     DiffusionUnetHybridImagePolicy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_shape_meta():
     return {
@@ -83,15 +83,14 @@ def _make_identity_normalizer():
         "agent_pos": SingleFieldLinearNormalizer.create_identity(shape=(2,)),
     }
     # For action
-    normalizer.params_dict["action"] = SingleFieldLinearNormalizer.create_identity(
-        shape=(2,)
-    )
+    normalizer.params_dict["action"] = SingleFieldLinearNormalizer.create_identity(shape=(2,))
     return normalizer
 
 
 # ---------------------------------------------------------------------------
 # LowdimMaskGenerator
 # ---------------------------------------------------------------------------
+
 
 class TestLowdimMaskGenerator:
     def test_shape(self):
@@ -110,31 +109,32 @@ class TestLowdimMaskGenerator:
 
     def test_obs_visible(self):
         """Obs dims should be visible for first n_obs timesteps."""
-        gen = LowdimMaskGenerator(
-            action_dim=2, obs_dim=3, max_n_obs_steps=2, fix_obs_steps=True
-        )
+        gen = LowdimMaskGenerator(action_dim=2, obs_dim=3, max_n_obs_steps=2, fix_obs_steps=True)
         mask = gen((1, 8, 5))
         mask_np = np.array(mask)
         # Action dims (0, 1) should be all False
         assert mask_np[0, :, 0].sum() == 0
         assert mask_np[0, :, 1].sum() == 0
         # Obs dims (2, 3, 4) should be True for t=0, t=1
-        assert mask_np[0, 0, 2] == True
-        assert mask_np[0, 1, 2] == True
-        assert mask_np[0, 2, 2] == False
+        assert mask_np[0, 0, 2]
+        assert mask_np[0, 1, 2]
+        assert not mask_np[0, 2, 2]
 
     def test_action_visible(self):
         """With action_visible=True, actions visible for t < obs_steps - 1."""
         gen = LowdimMaskGenerator(
-            action_dim=2, obs_dim=3, max_n_obs_steps=3,
-            fix_obs_steps=True, action_visible=True,
+            action_dim=2,
+            obs_dim=3,
+            max_n_obs_steps=3,
+            fix_obs_steps=True,
+            action_visible=True,
         )
         mask = gen((1, 8, 5))
         mask_np = np.array(mask)
         # Action dims visible for t < 2 (3 - 1)
-        assert mask_np[0, 0, 0] == True
-        assert mask_np[0, 1, 0] == True
-        assert mask_np[0, 2, 0] == False
+        assert mask_np[0, 0, 0]
+        assert mask_np[0, 1, 0]
+        assert not mask_np[0, 2, 0]
 
     def test_assert_wrong_dim(self):
         """Should raise when D != action_dim + obs_dim."""
@@ -146,6 +146,7 @@ class TestLowdimMaskGenerator:
 # ---------------------------------------------------------------------------
 # BaseImagePolicy
 # ---------------------------------------------------------------------------
+
 
 class TestBaseImagePolicy:
     def test_abstract(self):
@@ -165,6 +166,7 @@ class TestBaseImagePolicy:
 # ---------------------------------------------------------------------------
 # DiffusionUnetHybridImagePolicy
 # ---------------------------------------------------------------------------
+
 
 class TestPolicyConstruction:
     def test_instantiation(self):
@@ -186,8 +188,11 @@ class TestPredictAction:
         """predict_action should return correct shapes."""
         mx.random.seed(42)
         policy = _make_policy(
-            horizon=16, n_action_steps=8, n_obs_steps=2,
-            num_inference_steps=2, num_train_timesteps=5,
+            horizon=16,
+            n_action_steps=8,
+            n_obs_steps=2,
+            num_inference_steps=2,
+            num_train_timesteps=5,
         )
         policy.set_normalizer(_make_identity_normalizer())
         mx.eval(policy.parameters())

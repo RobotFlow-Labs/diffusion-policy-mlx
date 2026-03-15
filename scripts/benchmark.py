@@ -19,13 +19,11 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+import mlx.core as mx
 import numpy as np
 
-import mlx.core as mx
-import mlx.nn as nn
-
+from diffusion_policy_mlx.compat.schedulers import DDIMScheduler, DDPMScheduler
 from diffusion_policy_mlx.model.diffusion.conditional_unet1d import ConditionalUnet1D
-from diffusion_policy_mlx.compat.schedulers import DDPMScheduler, DDIMScheduler
 
 try:
     import torch
@@ -130,9 +128,7 @@ def create_dummy_inputs(
     """Create dummy inputs for benchmarking."""
     return {
         "sample": mx.random.normal((batch_size, horizon, action_dim)),
-        "global_cond": mx.random.normal(
-            (batch_size, obs_dim * n_obs_steps)
-        ),
+        "global_cond": mx.random.normal((batch_size, obs_dim * n_obs_steps)),
     }
 
 
@@ -184,9 +180,7 @@ def benchmark_single_forward(
 
     # Warmup
     for _ in range(num_warmup):
-        run_single_inference(
-            model, inputs["sample"], 0, inputs["global_cond"]
-        )
+        run_single_inference(model, inputs["sample"], 0, inputs["global_cond"])
 
     # Reset peak memory tracking
     mx.get_peak_memory()
@@ -195,9 +189,7 @@ def benchmark_single_forward(
     latencies = []
     for _ in range(num_runs):
         start = time.perf_counter()
-        run_single_inference(
-            model, inputs["sample"], 0, inputs["global_cond"]
-        )
+        run_single_inference(model, inputs["sample"], 0, inputs["global_cond"])
         elapsed = time.perf_counter() - start
         latencies.append(elapsed * 1000)  # ms
 
@@ -364,7 +356,7 @@ def benchmark_pytorch_forward(
 
     try:
         # Import upstream model
-        sys_path_backup = __import__("sys").path[:]
+        __import__("sys").path[:]  # ensure sys is importable
         from diffusion_policy.model.diffusion.conditional_unet1d import (
             ConditionalUnet1D as TorchUnet,
         )
@@ -457,7 +449,7 @@ def run_benchmark(
             model_weights = {}
             for k, v in weights.items():
                 if k.startswith("model."):
-                    model_weights[k[len("model."):]] = v
+                    model_weights[k[len("model.") :]] = v
             if model_weights:
                 model.load_weights(list(model_weights.items()))
                 logger.info("Loaded model weights from %s", weights_path)

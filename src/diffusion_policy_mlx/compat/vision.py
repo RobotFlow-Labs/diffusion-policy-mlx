@@ -10,7 +10,6 @@ from typing import Callable, List, Optional, Type, Union
 import mlx.core as mx
 import mlx.nn as nn
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -20,61 +19,20 @@ def clone_module(module: "nn.Module") -> "nn.Module":
     """Deep-clone an MLX nn.Module (copy.deepcopy fails on nanobind objects).
 
     Creates a fresh instance of the same class and loads the weights from the
-    original module.
+    original module entirely in memory (no temp files).
     """
-    import json
-    import io
+    from mlx.utils import tree_flatten
 
-    # Save weights to a flat list
-    weights = module.parameters()
+    # Reconstruct a new module with identical architecture
+    new_module = _reconstruct_module(module)
 
-    # Reconstruct from class — we need the constructor args. For our ResNet
-    # this is handled by re-creating via factory functions. For a generic
-    # approach, we save/load the weights into a new instance created by the
-    # same factory.
-
-    # Use MLX's built-in save/load mechanism
-    flat_weights = dict(_flatten_dict(weights))
-
-    # Create new instance by calling the class constructor
-    # This requires that __init__ has been called and the module tree structure
-    # can be inferred from the weights alone. For MLX this works via load_weights.
-    import tempfile, os
-    from pathlib import Path
-
-    # Save to temp file
-    with tempfile.NamedTemporaryFile(suffix=".safetensors", delete=False) as f:
-        tmp_path = f.name
-
-    try:
-        module.save_weights(tmp_path)
-
-        # Create a fresh instance of the same architecture
-        # We need to reconstruct via the same constructor.
-        # For ResNet, we stored _block_type and can reconstruct.
-        new_module = _reconstruct_module(module)
-        new_module.load_weights(tmp_path)
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    # Copy weights in memory: flatten to list of (key, array) pairs,
+    # create independent copies of each array, then load into the new module.
+    flat_weights = tree_flatten(module.parameters())
+    copied_weights = [(k, mx.array(v)) for k, v in flat_weights]
+    new_module.load_weights(copied_weights)
 
     return new_module
-
-
-def _flatten_dict(d, prefix=""):
-    """Flatten a nested dict with dot-separated keys."""
-    items = []
-    if isinstance(d, dict):
-        for k, v in d.items():
-            new_key = f"{prefix}.{k}" if prefix else k
-            items.extend(_flatten_dict(v, new_key))
-    elif isinstance(d, list):
-        for i, v in enumerate(d):
-            new_key = f"{prefix}.{i}" if prefix else str(i)
-            items.extend(_flatten_dict(v, new_key))
-    else:
-        items.append((prefix, d))
-    return items
 
 
 def _reconstruct_module(module: "nn.Module") -> "nn.Module":
@@ -113,8 +71,10 @@ def _reconstruct_module(module: "nn.Module") -> "nn.Module":
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
+
 class Identity(nn.Module):
     """Identity module (passthrough)."""
+
     def __call__(self, x):
         return x
 
@@ -128,6 +88,7 @@ def _pair(x):
 # ---------------------------------------------------------------------------
 # Blocks
 # ---------------------------------------------------------------------------
+
 
 class BasicBlock(nn.Module):
     """ResNet basic block (used in ResNet18/34)."""
@@ -143,7 +104,9 @@ class BasicBlock(nn.Module):
     ):
         super().__init__()
         # All convs use NHWC internally (MLX default)
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn1 = nn.BatchNorm(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm(planes)
@@ -185,7 +148,9 @@ class Bottleneck(nn.Module):
         self.bn1 = nn.BatchNorm(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn2 = nn.BatchNorm(planes)
-        self.conv3 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, stride=1, padding=0, bias=False)
+        self.conv3 = nn.Conv2d(
+            planes, planes * self.expansion, kernel_size=1, stride=1, padding=0, bias=False
+        )
         self.bn3 = nn.BatchNorm(planes * self.expansion)
         self.downsample = downsample
 
@@ -215,12 +180,15 @@ class Bottleneck(nn.Module):
 # Downsample helper (conv + bn as a sequential-like callable)
 # ---------------------------------------------------------------------------
 
+
 class _Downsample(nn.Module):
     """1x1 conv + batchnorm for residual projection."""
 
     def __init__(self, in_channels: int, out_channels: int, stride: int):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=False)
+        self.conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=False
+        )
         self.bn = nn.BatchNorm(out_channels)
 
     def __call__(self, x):
@@ -230,6 +198,7 @@ class _Downsample(nn.Module):
 # ---------------------------------------------------------------------------
 # ResNet
 # ---------------------------------------------------------------------------
+
 
 class ResNet(nn.Module):
     """Full ResNet backbone.
@@ -319,6 +288,7 @@ class ResNet(nn.Module):
 # Factory functions
 # ---------------------------------------------------------------------------
 
+
 def resnet18(**kwargs) -> ResNet:
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
 
@@ -334,6 +304,7 @@ def resnet50(**kwargs) -> ResNet:
 # ---------------------------------------------------------------------------
 # Weight loading from torchvision state_dict
 # ---------------------------------------------------------------------------
+
 
 def _torch_bn_key_to_mlx(key: str) -> str:
     """Map torchvision BatchNorm2d param names to mlx.nn.BatchNorm names.
@@ -419,6 +390,7 @@ def load_torchvision_weights(mlx_resnet: ResNet, torch_state_dict: dict):
 # ---------------------------------------------------------------------------
 # replace_submodules utility
 # ---------------------------------------------------------------------------
+
 
 def replace_submodules(
     root_module: nn.Module,

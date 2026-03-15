@@ -169,9 +169,7 @@ def get_scheduler(
         ValueError: If ``name`` is not a recognized scheduler type.
     """
     if name == "cosine":
-        return CosineAnnealingLR(
-            optimizer, num_training_steps, num_warmup_steps, **kwargs
-        )
+        return CosineAnnealingLR(optimizer, num_training_steps, num_warmup_steps, **kwargs)
     elif name == "linear":
         return LinearLR(optimizer, num_training_steps, num_warmup_steps)
     elif name == "constant":

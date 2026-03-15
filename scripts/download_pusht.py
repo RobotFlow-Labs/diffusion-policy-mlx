@@ -12,17 +12,12 @@ data server hosted at Columbia University.
 from __future__ import annotations
 
 import argparse
-import hashlib
-import os
 import sys
 import zipfile
 from pathlib import Path
 from urllib.request import urlretrieve
 
-PUSHT_URL = (
-    "https://diffusion-policy.cs.columbia.edu/"
-    "data/training/pusht_cchi_v7_replay.zarr.zip"
-)
+PUSHT_URL = "https://diffusion-policy.cs.columbia.edu/data/training/pusht_cchi_v7_replay.zarr.zip"
 
 # Expected output directory name after extraction
 ZARR_DIR_NAME = "pusht_cchi_v7_replay.zarr"
@@ -114,9 +109,7 @@ def _verify(zarr_path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Download PushT dataset for Diffusion Policy"
-    )
+    parser = argparse.ArgumentParser(description="Download PushT dataset for Diffusion Policy")
     parser.add_argument(
         "--output",
         default="data",

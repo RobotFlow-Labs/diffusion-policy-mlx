@@ -14,8 +14,8 @@ Architecture:
   Output (B, T, input_dim)
 """
 
-from typing import Optional, Union
 import logging
+from typing import Optional, Union
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -170,14 +170,20 @@ class ConditionalUnet1D(nn.Module):
             self.local_cond_encoder = [
                 # down encoder
                 ConditionalResidualBlock1D(
-                    dim_in, dim_out, cond_dim=cond_dim,
-                    kernel_size=kernel_size, n_groups=n_groups,
+                    dim_in,
+                    dim_out,
+                    cond_dim=cond_dim,
+                    kernel_size=kernel_size,
+                    n_groups=n_groups,
                     cond_predict_scale=cond_predict_scale,
                 ),
                 # up encoder
                 ConditionalResidualBlock1D(
-                    dim_in, dim_out, cond_dim=cond_dim,
-                    kernel_size=kernel_size, n_groups=n_groups,
+                    dim_in,
+                    dim_out,
+                    cond_dim=cond_dim,
+                    kernel_size=kernel_size,
+                    n_groups=n_groups,
                     cond_predict_scale=cond_predict_scale,
                 ),
             ]
@@ -186,13 +192,19 @@ class ConditionalUnet1D(nn.Module):
         mid_dim = all_dims[-1]
         self.mid_modules = [
             ConditionalResidualBlock1D(
-                mid_dim, mid_dim, cond_dim=cond_dim,
-                kernel_size=kernel_size, n_groups=n_groups,
+                mid_dim,
+                mid_dim,
+                cond_dim=cond_dim,
+                kernel_size=kernel_size,
+                n_groups=n_groups,
                 cond_predict_scale=cond_predict_scale,
             ),
             ConditionalResidualBlock1D(
-                mid_dim, mid_dim, cond_dim=cond_dim,
-                kernel_size=kernel_size, n_groups=n_groups,
+                mid_dim,
+                mid_dim,
+                cond_dim=cond_dim,
+                kernel_size=kernel_size,
+                n_groups=n_groups,
                 cond_predict_scale=cond_predict_scale,
             ),
         ]
@@ -201,37 +213,53 @@ class ConditionalUnet1D(nn.Module):
         self.down_modules = []
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (len(in_out) - 1)
-            self.down_modules.append([
-                ConditionalResidualBlock1D(
-                    dim_in, dim_out, cond_dim=cond_dim,
-                    kernel_size=kernel_size, n_groups=n_groups,
-                    cond_predict_scale=cond_predict_scale,
-                ),
-                ConditionalResidualBlock1D(
-                    dim_out, dim_out, cond_dim=cond_dim,
-                    kernel_size=kernel_size, n_groups=n_groups,
-                    cond_predict_scale=cond_predict_scale,
-                ),
-                Downsample1d(dim_out) if not is_last else _Identity(),
-            ])
+            self.down_modules.append(
+                [
+                    ConditionalResidualBlock1D(
+                        dim_in,
+                        dim_out,
+                        cond_dim=cond_dim,
+                        kernel_size=kernel_size,
+                        n_groups=n_groups,
+                        cond_predict_scale=cond_predict_scale,
+                    ),
+                    ConditionalResidualBlock1D(
+                        dim_out,
+                        dim_out,
+                        cond_dim=cond_dim,
+                        kernel_size=kernel_size,
+                        n_groups=n_groups,
+                        cond_predict_scale=cond_predict_scale,
+                    ),
+                    Downsample1d(dim_out) if not is_last else _Identity(),
+                ]
+            )
 
         # Up path
         self.up_modules = []
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (len(in_out) - 1)
-            self.up_modules.append([
-                ConditionalResidualBlock1D(
-                    dim_out * 2, dim_in, cond_dim=cond_dim,
-                    kernel_size=kernel_size, n_groups=n_groups,
-                    cond_predict_scale=cond_predict_scale,
-                ),
-                ConditionalResidualBlock1D(
-                    dim_in, dim_in, cond_dim=cond_dim,
-                    kernel_size=kernel_size, n_groups=n_groups,
-                    cond_predict_scale=cond_predict_scale,
-                ),
-                Upsample1d(dim_in) if not is_last else _Identity(),
-            ])
+            self.up_modules.append(
+                [
+                    ConditionalResidualBlock1D(
+                        dim_out * 2,
+                        dim_in,
+                        cond_dim=cond_dim,
+                        kernel_size=kernel_size,
+                        n_groups=n_groups,
+                        cond_predict_scale=cond_predict_scale,
+                    ),
+                    ConditionalResidualBlock1D(
+                        dim_in,
+                        dim_in,
+                        cond_dim=cond_dim,
+                        kernel_size=kernel_size,
+                        n_groups=n_groups,
+                        cond_predict_scale=cond_predict_scale,
+                    ),
+                    Upsample1d(dim_in) if not is_last else _Identity(),
+                ]
+            )
 
         # Final conv
         self.final_block = Conv1dBlock(start_dim, start_dim, kernel_size=kernel_size)
@@ -277,9 +305,7 @@ class ConditionalUnet1D(nn.Module):
         global_feature = self.diffusion_step_encoder_linear2(global_feature)
 
         if global_cond is not None:
-            global_feature = mx.concatenate(
-                [global_feature, global_cond], axis=-1
-            )
+            global_feature = mx.concatenate([global_feature, global_cond], axis=-1)
 
         # Encode local features
         h_local: list = []

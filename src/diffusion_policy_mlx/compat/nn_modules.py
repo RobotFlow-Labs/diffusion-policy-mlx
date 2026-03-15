@@ -9,10 +9,10 @@ from typing import Any, Dict, Optional
 import mlx.core as mx
 import mlx.nn as nn
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _first_leaf(tree):
     """Return the first ``mx.array`` leaf found via DFS in *tree*."""
@@ -34,6 +34,7 @@ def _first_leaf(tree):
 # ---------------------------------------------------------------------------
 # ModuleAttrMixin
 # ---------------------------------------------------------------------------
+
 
 class ModuleAttrMixin(nn.Module):
     """Port of ``diffusion_policy.model.common.module_attr_mixin.ModuleAttrMixin``.
@@ -57,6 +58,7 @@ class ModuleAttrMixin(nn.Module):
 # ---------------------------------------------------------------------------
 # DictOfTensorMixin
 # ---------------------------------------------------------------------------
+
 
 class DictOfTensorMixin(nn.Module):
     """Port of ``diffusion_policy.model.common.dict_of_tensor_mixin.DictOfTensorMixin``.
@@ -97,6 +99,6 @@ class DictOfTensorMixin(nn.Module):
         out: Dict[str, Any] = {}
         for key, value in flat_dict.items():
             if key.startswith(prefix):
-                param_keys = key[len(prefix):].split(".")
+                param_keys = key[len(prefix) :].split(".")
                 _dfs_add(out, param_keys, value)
         self.params_dict = out

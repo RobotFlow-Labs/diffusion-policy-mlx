@@ -1,6 +1,6 @@
 # PRD-06: Training Loop
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** PRD-05 (Policy Assembly)
 **Blocks:** PRD-08 (Evaluation)
 

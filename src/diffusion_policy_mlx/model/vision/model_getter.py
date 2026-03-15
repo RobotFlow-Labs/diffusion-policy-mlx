@@ -48,7 +48,7 @@ def get_resnet(name: str, weights=None, **kwargs) -> ResNet:
 def _load_pretrained(model: ResNet, name: str):
     """Load pretrained torchvision weights (requires torch + torchvision)."""
     try:
-        import torch
+        import torch  # noqa: F401 (required by torchvision)
         import torchvision
     except ImportError:
         raise ImportError(

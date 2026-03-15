@@ -1,33 +1,33 @@
 """Tests for diffusion_policy_mlx.compat.nn_layers and related modules."""
 
+import mlx.core as mx
 import numpy as np
 import pytest
-import mlx.core as mx
 
 from diffusion_policy_mlx.compat import (
-    Conv1d,
-    ConvTranspose1d,
-    Conv2d,
-    GroupNorm,
     BatchNorm2d,
-    Sequential,
+    Conv1d,
+    Conv2d,
+    ConvTranspose1d,
+    DictOfTensorMixin,
+    GroupNorm,
     Identity,
     Mish,
-    SiLU,
-    mish,
-    silu,
-    pad_1d,
+    ModuleAttrMixin,
+    Sequential,
     interpolate_1d,
+    mish,
+    pad_1d,
     rearrange_b_h_t_to_b_t_h,
     rearrange_b_t_h_to_b_h_t,
     rearrange_batch_t_to_batch_t_1,
-    ModuleAttrMixin,
-    DictOfTensorMixin,
+    silu,
 )
 
 try:
     import torch
     import torch.nn as torch_nn
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -36,6 +36,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Conv1d shape tests
 # ---------------------------------------------------------------------------
+
 
 class TestConv1dShape:
     def test_basic_shape(self):
@@ -67,10 +68,41 @@ class TestConv1dShape:
         mx.eval(out)
         assert out.shape == (2, 32, 50)
 
+    def test_groups_shape(self):
+        """Conv1d with groups parameter produces correct output shape."""
+        conv = Conv1d(16, 16, 3, padding=1, groups=4)
+        x = mx.random.normal((2, 16, 50))
+        out = conv(x)
+        mx.eval(out)
+        assert out.shape == (2, 16, 50)
+        assert conv.groups == 4
+
+    @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+    def test_groups_matches_torch(self):
+        """Conv1d with groups matches PyTorch numerically."""
+        in_c, out_c, kernel, groups = 16, 16, 3, 4
+        padding = 1
+
+        mlx_conv = Conv1d(in_c, out_c, kernel, padding=padding, groups=groups, bias=True)
+        torch_conv = torch_nn.Conv1d(in_c, out_c, kernel, padding=padding, groups=groups, bias=True)
+
+        torch_w = torch_conv.weight.detach().numpy()  # (C_out, C_in/groups, K)
+        torch_b = torch_conv.bias.detach().numpy()
+        mlx_w = np.transpose(torch_w, (0, 2, 1))  # (C_out, K, C_in/groups)
+        mlx_conv._conv.weight = mx.array(mlx_w)
+        mlx_conv._conv.bias = mx.array(torch_b)
+
+        x_np = np.random.randn(2, in_c, 20).astype(np.float32)
+        torch_out = torch_conv(torch.tensor(x_np)).detach().numpy()
+        mlx_out = np.array(mlx_conv(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=2e-3, rtol=1e-4)
+
 
 # ---------------------------------------------------------------------------
 # Conv1d numerics vs torch
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
 class TestConv1dNumerics:
@@ -88,7 +120,7 @@ class TestConv1dNumerics:
         # Copy weights: torch weight is (C_out, C_in, K)
         # MLX internal conv weight is (C_out, K, C_in)
         torch_w = torch_conv.weight.detach().numpy()  # (C_out, C_in, K)
-        torch_b = torch_conv.bias.detach().numpy()     # (C_out,)
+        torch_b = torch_conv.bias.detach().numpy()  # (C_out,)
 
         # MLX Conv1d weight shape: (out, kernel, in)
         mlx_w = np.transpose(torch_w, (0, 2, 1))  # (C_out, K, C_in)
@@ -107,6 +139,7 @@ class TestConv1dNumerics:
 # ConvTranspose1d
 # ---------------------------------------------------------------------------
 
+
 class TestConvTranspose1d:
     def test_upsample_2x_shape(self):
         ct = ConvTranspose1d(32, 32, 4, stride=2, padding=1)
@@ -122,10 +155,41 @@ class TestConvTranspose1d:
         mx.eval(out)
         assert out.shape == (1, 32, 20)
 
+    def test_output_padding_stored(self):
+        ct = ConvTranspose1d(16, 16, 3, stride=2, padding=1, output_padding=1)
+        assert ct.output_padding == 1
+
+    @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+    def test_matches_torch(self):
+        """ConvTranspose1d output matches PyTorch given identical weights."""
+        in_c, out_c, kernel = 8, 16, 4
+        stride, padding = 2, 1
+
+        mlx_ct = ConvTranspose1d(in_c, out_c, kernel, stride=stride, padding=padding, bias=True)
+        torch_ct = torch_nn.ConvTranspose1d(
+            in_c, out_c, kernel, stride=stride, padding=padding, bias=True
+        )
+
+        # Copy weights: torch weight is (C_in, C_out, K)
+        # MLX ConvTranspose1d weight is (C_out, K, C_in)
+        torch_w = torch_ct.weight.detach().numpy()  # (C_in, C_out, K)
+        torch_b = torch_ct.bias.detach().numpy()  # (C_out,)
+
+        mlx_w = np.transpose(torch_w, (1, 2, 0))  # (C_out, K, C_in)
+        mlx_ct._conv.weight = mx.array(mlx_w)
+        mlx_ct._conv.bias = mx.array(torch_b)
+
+        x_np = np.random.randn(2, in_c, 10).astype(np.float32)
+        torch_out = torch_ct(torch.tensor(x_np)).detach().numpy()
+        mlx_out = np.array(mlx_ct(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=2e-3, rtol=1e-4)
+
 
 # ---------------------------------------------------------------------------
 # Conv2d
 # ---------------------------------------------------------------------------
+
 
 class TestConv2d:
     def test_basic_shape(self):
@@ -146,6 +210,7 @@ class TestConv2d:
 # ---------------------------------------------------------------------------
 # GroupNorm
 # ---------------------------------------------------------------------------
+
 
 class TestGroupNorm:
     def test_ncl_shape(self):
@@ -183,10 +248,21 @@ class TestGroupNorm:
 
         np.testing.assert_allclose(mlx_out, torch_out, atol=1e-4, rtol=1e-4)
 
+    def test_invalid_input_dims(self):
+        """GroupNorm wrapper should reject 2-D and 5-D inputs."""
+        gn = GroupNorm(4, 16)
+        with pytest.raises(ValueError, match="3-D or 4-D"):
+            gn(mx.random.normal((16,)))  # 1-D
+        with pytest.raises(ValueError, match="3-D or 4-D"):
+            gn(mx.random.normal((2, 16)))  # 2-D
+        with pytest.raises(ValueError, match="3-D or 4-D"):
+            gn(mx.random.normal((1, 2, 16, 4, 4)))  # 5-D
+
 
 # ---------------------------------------------------------------------------
 # BatchNorm2d
 # ---------------------------------------------------------------------------
+
 
 class TestBatchNorm2d:
     def test_shape(self):
@@ -200,6 +276,7 @@ class TestBatchNorm2d:
 # ---------------------------------------------------------------------------
 # Sequential
 # ---------------------------------------------------------------------------
+
 
 class TestSequential:
     def test_chain(self):
@@ -227,6 +304,7 @@ class TestSequential:
 # Identity
 # ---------------------------------------------------------------------------
 
+
 class TestIdentity:
     def test_passthrough(self):
         ident = Identity()
@@ -244,6 +322,7 @@ class TestIdentity:
 # ---------------------------------------------------------------------------
 # Functional: mish, silu
 # ---------------------------------------------------------------------------
+
 
 class TestActivations:
     def test_mish_shape(self):
@@ -282,6 +361,7 @@ class TestActivations:
 # Functional: pad_1d
 # ---------------------------------------------------------------------------
 
+
 class TestPad1d:
     def test_constant_pad(self):
         x = mx.ones((1, 2, 5))
@@ -307,6 +387,7 @@ class TestPad1d:
 # Functional: interpolate_1d
 # ---------------------------------------------------------------------------
 
+
 class TestInterpolate1d:
     def test_upsample_2x(self):
         x = mx.ones((1, 4, 10))
@@ -324,6 +405,7 @@ class TestInterpolate1d:
 # ---------------------------------------------------------------------------
 # Einops helpers
 # ---------------------------------------------------------------------------
+
 
 class TestEinopsHelpers:
     def test_b_h_t_to_b_t_h(self):
@@ -351,14 +433,17 @@ class TestEinopsHelpers:
 # Module mixins
 # ---------------------------------------------------------------------------
 
+
 class TestModuleAttrMixin:
     def test_device_property(self):
         class MyModule(ModuleAttrMixin):
             def __init__(self):
                 super().__init__()
                 self.w = mx.zeros((3, 3))
+
             def __call__(self, x):
                 return x
+
         m = MyModule()
         assert m.device == "mlx"
 
@@ -367,8 +452,10 @@ class TestModuleAttrMixin:
             def __init__(self):
                 super().__init__()
                 self.w = mx.zeros((3, 3), dtype=mx.float32)
+
             def __call__(self, x):
                 return x
+
         m = MyModule()
         assert m.dtype == mx.float32
 
@@ -404,9 +491,11 @@ class TestDictOfTensorMixin:
 # Import smoke test
 # ---------------------------------------------------------------------------
 
+
 def test_compat_import_star():
     """Verify that `from diffusion_policy_mlx.compat import *` works."""
     import diffusion_policy_mlx.compat as compat
+
     # Spot-check a few names
     assert hasattr(compat, "Conv1d")
     assert hasattr(compat, "GroupNorm")

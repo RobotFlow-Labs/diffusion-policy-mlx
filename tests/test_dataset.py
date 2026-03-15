@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
+import mlx.core as mx
 import numpy as np
 import pytest
 import zarr
 
-import mlx.core as mx
-
 from diffusion_policy_mlx.dataset.pusht_image_dataset import (
     PushTImageDataset,
     SequenceSampler,
-    create_indices,
     _SingleFieldNormalizer,
+    create_indices,
 )
 from diffusion_policy_mlx.dataset.replay_buffer import ReplayBuffer
 from diffusion_policy_mlx.training.collate import collate_batch
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def zarr_path(tmp_path):
@@ -79,6 +78,7 @@ def short_zarr_path(tmp_path):
 # PushTImageDataset tests
 # ---------------------------------------------------------------------------
 
+
 class TestPushTImageDatasetShapes:
     """Verify __getitem__ output shapes and types."""
 
@@ -131,9 +131,7 @@ class TestEpisodeBoundaryPadding:
 
     def test_first_sample_padding(self, short_zarr_path):
         """First sample with pad_before=3 should replicate the first frame."""
-        ds = PushTImageDataset(
-            short_zarr_path, horizon=8, pad_before=3, pad_after=0
-        )
+        ds = PushTImageDataset(short_zarr_path, horizon=8, pad_before=3, pad_after=0)
         # The first index should start at -3 relative to episode start,
         # meaning 3 frames of padding.
         sample = ds[0]
@@ -148,9 +146,7 @@ class TestEpisodeBoundaryPadding:
 
     def test_last_sample_padding(self, short_zarr_path):
         """Last sample of an episode with pad_after should replicate last frame."""
-        ds = PushTImageDataset(
-            short_zarr_path, horizon=8, pad_before=0, pad_after=3
-        )
+        ds = PushTImageDataset(short_zarr_path, horizon=8, pad_before=0, pad_after=3)
         # Get the last sample
         sample = ds[len(ds) - 1]
         img = sample["obs"]["image"]
@@ -162,16 +158,12 @@ class TestEpisodeBoundaryPadding:
     def test_sequence_stays_within_episode(self, zarr_path):
         """Verify that sampled indices never cross episode boundaries."""
         episode_ends = np.array([100, 200], dtype=np.int64)
-        indices = create_indices(
-            episode_ends, sequence_length=16, pad_before=1, pad_after=7
-        )
+        indices = create_indices(episode_ends, sequence_length=16, pad_before=1, pad_after=7)
         for row in indices:
             buf_start, buf_end, _, _ = row
             # Must be within one episode
             if buf_start < 100:
-                assert buf_end <= 100, (
-                    f"Cross-boundary: {buf_start}-{buf_end}"
-                )
+                assert buf_end <= 100, f"Cross-boundary: {buf_start}-{buf_end}"
             else:
                 assert buf_start >= 100 and buf_end <= 200
 
@@ -187,33 +179,28 @@ class TestCreateIndices:
 
     def test_with_padding(self):
         episode_ends = np.array([10])
-        indices = create_indices(
-            episode_ends, sequence_length=5, pad_before=2, pad_after=2
-        )
+        indices = create_indices(episode_ends, sequence_length=5, pad_before=2, pad_after=2)
         # min_start = -2, max_start = 10 - 5 + 2 = 7 => 10 sequences
         assert len(indices) == 10
 
     def test_episode_mask(self):
         episode_ends = np.array([10, 20])
         mask = np.array([True, False])
-        indices = create_indices(
-            episode_ends, sequence_length=5, episode_mask=mask
-        )
+        indices = create_indices(episode_ends, sequence_length=5, episode_mask=mask)
         # Only first episode: 6 sequences
         assert len(indices) == 6
 
     def test_empty_mask(self):
         episode_ends = np.array([10, 20])
         mask = np.array([False, False])
-        indices = create_indices(
-            episode_ends, sequence_length=5, episode_mask=mask
-        )
+        indices = create_indices(episode_ends, sequence_length=5, episode_mask=mask)
         assert len(indices) == 0
 
 
 # ---------------------------------------------------------------------------
 # Normalizer tests
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizer:
     """Test normalizer fitting and round-trip."""
@@ -275,6 +262,7 @@ class TestNormalizer:
 # Collation tests
 # ---------------------------------------------------------------------------
 
+
 class TestCollateBatch:
     """Test collate_batch produces valid mx.array batches."""
 
@@ -318,6 +306,7 @@ class TestCollateBatch:
 # ReplayBuffer tests
 # ---------------------------------------------------------------------------
 
+
 class TestReplayBuffer:
     """Test the lightweight replay buffer."""
 
@@ -351,6 +340,7 @@ class TestReplayBuffer:
 # SequenceSampler tests
 # ---------------------------------------------------------------------------
 
+
 class TestSequenceSampler:
     """Test the sequence sampler respects episode boundaries."""
 
@@ -372,10 +362,12 @@ class TestSequenceSampler:
     def test_sampler_no_cross_episode(self):
         """Sequences should never contain data from two episodes."""
         data = {
-            "ep_id": np.concatenate([
-                np.zeros(10, dtype=np.int32),
-                np.ones(10, dtype=np.int32),
-            ]).reshape(20, 1),
+            "ep_id": np.concatenate(
+                [
+                    np.zeros(10, dtype=np.int32),
+                    np.ones(10, dtype=np.int32),
+                ]
+            ).reshape(20, 1),
         }
         episode_ends = np.array([10, 20])
         sampler = SequenceSampler(
@@ -388,9 +380,7 @@ class TestSequenceSampler:
         for i in range(len(sampler)):
             seq = sampler.sample_sequence(i)
             vals = np.unique(seq["ep_id"])
-            assert len(vals) == 1, (
-                f"Sample {i} crosses episodes: {vals}"
-            )
+            assert len(vals) == 1, f"Sample {i} crosses episodes: {vals}"
 
     def test_sampler_padding_values(self):
         """Padding should replicate edge frames."""
@@ -420,13 +410,18 @@ class TestSequenceSampler:
 # Validation split tests
 # ---------------------------------------------------------------------------
 
+
 class TestValidationSplit:
     """Test train/val splitting."""
 
     def test_val_dataset(self, zarr_path):
         ds = PushTImageDataset(
-            zarr_path, horizon=8, pad_before=0, pad_after=0,
-            val_ratio=0.5, seed=42,
+            zarr_path,
+            horizon=8,
+            pad_before=0,
+            pad_after=0,
+            val_ratio=0.5,
+            seed=42,
         )
         val_ds = ds.get_validation_dataset()
         # With 2 episodes and 50% val, we get 1 train + 1 val
@@ -441,7 +436,10 @@ class TestValidationSplit:
 
     def test_no_val(self, zarr_path):
         ds = PushTImageDataset(
-            zarr_path, horizon=8, pad_before=0, pad_after=0,
+            zarr_path,
+            horizon=8,
+            pad_before=0,
+            pad_after=0,
             val_ratio=0.0,
         )
         val_ds = ds.get_validation_dataset()

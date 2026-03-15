@@ -1,7 +1,6 @@
 """Shared test fixtures for diffusion-policy-mlx."""
 
 import numpy as np
-import pytest
 
 try:
     import torch
@@ -11,7 +10,7 @@ except ImportError:
     HAS_TORCH = False
 
 try:
-    import diffusers
+    import diffusers  # noqa: F401
 
     HAS_DIFFUSERS = True
 except ImportError:

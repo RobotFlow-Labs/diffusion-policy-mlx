@@ -19,11 +19,15 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from diffusion_policy_mlx.dataset.base_dataset import BaseImageDataset
-
+from diffusion_policy_mlx.model.common.normalizer import (
+    LinearNormalizer,
+    SingleFieldLinearNormalizer,
+)
 
 # ---------------------------------------------------------------------------
 # Index creation (pure numpy, no numba dependency)
 # ---------------------------------------------------------------------------
+
 
 def create_indices(
     episode_ends: np.ndarray,
@@ -68,21 +72,21 @@ def create_indices(
             end_offset = (idx + sequence_length + start_idx) - buffer_end_idx
             sample_start_idx = start_offset
             sample_end_idx = sequence_length - end_offset
-            indices.append([
-                buffer_start_idx,
-                buffer_end_idx,
-                sample_start_idx,
-                sample_end_idx,
-            ])
+            indices.append(
+                [
+                    buffer_start_idx,
+                    buffer_end_idx,
+                    sample_start_idx,
+                    sample_end_idx,
+                ]
+            )
 
     if len(indices) == 0:
         return np.zeros((0, 4), dtype=np.int64)
     return np.array(indices, dtype=np.int64)
 
 
-def get_val_mask(
-    n_episodes: int, val_ratio: float, seed: int = 0
-) -> np.ndarray:
+def get_val_mask(n_episodes: int, val_ratio: float, seed: int = 0) -> np.ndarray:
     """Create a boolean mask selecting validation episodes."""
     val_mask = np.zeros(n_episodes, dtype=bool)
     if val_ratio <= 0:
@@ -94,9 +98,7 @@ def get_val_mask(
     return val_mask
 
 
-def downsample_mask(
-    mask: np.ndarray, max_n: Optional[int], seed: int = 0
-) -> np.ndarray:
+def downsample_mask(mask: np.ndarray, max_n: Optional[int], seed: int = 0) -> np.ndarray:
     """Optionally subsample True entries in *mask* down to *max_n*."""
     if max_n is not None and int(np.sum(mask)) > max_n:
         n_train = int(max_n)
@@ -112,6 +114,7 @@ def downsample_mask(
 # ---------------------------------------------------------------------------
 # Sequence sampler
 # ---------------------------------------------------------------------------
+
 
 class SequenceSampler:
     """Episode-aware sequence sampler with edge-replicate padding."""
@@ -174,6 +177,7 @@ class SequenceSampler:
 # ---------------------------------------------------------------------------
 # Minimal normalizer (standalone, swappable with PRD-05 normalizer later)
 # ---------------------------------------------------------------------------
+
 
 class _SingleFieldNormalizer:
     """Minimal linear normalizer for a single field.
@@ -261,12 +265,14 @@ class _DictNormalizer(dict):
 
     Supports nested access: ``normalizer['obs']['agent_pos']``.
     """
+
     pass
 
 
 # ---------------------------------------------------------------------------
 # PushTImageDataset
 # ---------------------------------------------------------------------------
+
 
 class PushTImageDataset(BaseImageDataset):
     """PushT image dataset from zarr replay buffer.
@@ -316,12 +322,10 @@ class PushTImageDataset(BaseImageDataset):
         root = _zarr.open(zarr_path, mode="r")
 
         # Eagerly read meta; keep data arrays lazy (zarr-backed).
-        self._images = root["data/img"]          # (N, 96, 96, 3) uint8
-        self._states = root["data/state"]        # (N, 5) float32
-        self._actions = root["data/action"]      # (N, 2) float32
-        self._episode_ends: np.ndarray = np.asarray(
-            root["meta/episode_ends"][:]
-        ).astype(np.int64)
+        self._images = root["data/img"]  # (N, 96, 96, 3) uint8
+        self._states = root["data/state"]  # (N, 5) float32
+        self._actions = root["data/action"]  # (N, 2) float32
+        self._episode_ends: np.ndarray = np.asarray(root["meta/episode_ends"][:]).astype(np.int64)
 
         # Train/val split ------------------------------------------------
         val_mask = get_val_mask(
@@ -370,37 +374,35 @@ class PushTImageDataset(BaseImageDataset):
 
         return {
             "obs": {
-                "image": images,       # (T, 3, 96, 96)
-                "agent_pos": agent_pos, # (T, 2)
+                "image": images,  # (T, 3, 96, 96)
+                "agent_pos": agent_pos,  # (T, 2)
             },
-            "action": actions,          # (T, 2)
+            "action": actions,  # (T, 2)
         }
 
     # ------------------------------------------------------------------
     # Normalizer
     # ------------------------------------------------------------------
 
-    def get_normalizer(self, mode: str = "limits", **kwargs) -> _DictNormalizer:
+    def get_normalizer(self, mode: str = "limits", **kwargs) -> LinearNormalizer:
         """Fit normalizer on all data (actions + agent_pos).
 
-        Returns a dict-like normalizer with keys ``action`` and
+        Returns a :class:`LinearNormalizer` with keys ``action`` and
         ``obs`` (which itself is a dict with ``agent_pos`` and
-        ``image``).
+        ``image``).  This normalizer is compatible with the policy's
+        ``set_normalizer`` API.
         """
         all_actions = np.asarray(self._actions[:]).astype(np.float32)
         all_agent_pos = np.asarray(self._states[:, :2]).astype(np.float32)
 
-        normalizer = _DictNormalizer()
-        normalizer["action"] = _SingleFieldNormalizer.create_fit(
+        normalizer = LinearNormalizer()
+        normalizer["action"] = SingleFieldLinearNormalizer.create_fit(
             all_actions, mode=mode, **kwargs
         )
-
-        obs_normalizer = _DictNormalizer()
-        obs_normalizer["agent_pos"] = _SingleFieldNormalizer.create_fit(
-            all_agent_pos, mode=mode, **kwargs
-        )
-        obs_normalizer["image"] = _SingleFieldNormalizer.create_identity((3,))
-        normalizer["obs"] = obs_normalizer
+        normalizer["obs"] = {
+            "agent_pos": SingleFieldLinearNormalizer.create_fit(all_agent_pos, mode=mode, **kwargs),
+            "image": SingleFieldLinearNormalizer.create_identity(shape=(3,)),
+        }
 
         return normalizer
 

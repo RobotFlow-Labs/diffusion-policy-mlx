@@ -17,14 +17,12 @@ Two conditioning modes:
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import mlx.core as mx
-import mlx.nn as nn
 
 from diffusion_policy_mlx.model.common.normalizer import (
     LinearNormalizer,
-    SingleFieldLinearNormalizer,
 )
 from diffusion_policy_mlx.model.diffusion.conditional_unet1d import ConditionalUnet1D
 from diffusion_policy_mlx.model.diffusion.mask_generator import LowdimMaskGenerator
@@ -233,9 +231,7 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
             trajectory = mx.where(condition_mask, condition_data, trajectory)
 
             # Predict noise / x0
-            model_output = self.model(
-                trajectory, t, local_cond=local_cond, global_cond=global_cond
-            )
+            model_output = self.model(trajectory, t, local_cond=local_cond, global_cond=global_cond)
 
             # Scheduler step
             out = self.noise_scheduler.step(model_output, t, trajectory)
@@ -248,9 +244,7 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
 
     # -- Inference -------------------------------------------------------------
 
-    def predict_action(
-        self, obs_dict: Dict[str, mx.array]
-    ) -> Dict[str, mx.array]:
+    def predict_action(self, obs_dict: Dict[str, mx.array]) -> Dict[str, mx.array]:
         """Generate actions via iterative denoising.
 
         Args:
@@ -288,16 +282,13 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
 
             # Fill in observed obs features for first To timesteps
             # cond_data[:, :To, Da:] = nobs_features
-            obs_block = mx.concatenate(
-                [mx.zeros((B, To, Da)), nobs_features], axis=-1
-            )
+            obs_block = mx.concatenate([mx.zeros((B, To, Da)), nobs_features], axis=-1)
             pad_block = mx.zeros((B, T - To, Da + Do))
             cond_data = mx.concatenate([obs_block, pad_block], axis=1)
 
             # Build mask: obs dims visible for first To steps
             mask_obs = mx.concatenate(
-                [mx.zeros((B, To, Da), dtype=mx.bool_),
-                 mx.ones((B, To, Do), dtype=mx.bool_)],
+                [mx.zeros((B, To, Da), dtype=mx.bool_), mx.ones((B, To, Do), dtype=mx.bool_)],
                 axis=-1,
             )
             mask_pad = mx.zeros((B, T - To, Da + Do), dtype=mx.bool_)
@@ -305,8 +296,10 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
 
         # Run sampling
         nsample = self.conditional_sample(
-            cond_data, cond_mask,
-            local_cond=local_cond, global_cond=global_cond,
+            cond_data,
+            cond_mask,
+            local_cond=local_cond,
+            global_cond=global_cond,
         )
 
         # Extract action dims and unnormalize
@@ -331,13 +324,14 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
         Returns:
             Scalar loss.
         """
-        # Normalize
-        nobs = self.normalizer.normalize(batch["obs"])
-        nactions = self.normalizer["action"].normalize(batch["action"])
+        # Normalize — wrap in a full batch dict so the normalizer resolves
+        # nested obs keys correctly, then extract the pieces we need.
+        nbatch = self.normalizer.normalize({"obs": batch["obs"], "action": batch["action"]})
+        nobs = nbatch["obs"]
+        nactions = nbatch["action"]
 
         B = nactions.shape[0]
         horizon = nactions.shape[1]
-        To = self.n_obs_steps
 
         local_cond = None
         global_cond = None
@@ -365,14 +359,10 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
         noise = mx.random.normal(trajectory.shape)
 
         # Sample random timesteps
-        timesteps = mx.random.randint(
-            0, self.noise_scheduler.num_train_timesteps, (B,)
-        )
+        timesteps = mx.random.randint(0, self.noise_scheduler.num_train_timesteps, (B,))
 
         # Forward diffusion: add noise
-        noisy_trajectory = self.noise_scheduler.add_noise(
-            trajectory, noise, timesteps
-        )
+        noisy_trajectory = self.noise_scheduler.add_noise(trajectory, noise, timesteps)
 
         # Compute loss mask (invert condition mask)
         loss_mask = ~condition_mask
@@ -382,8 +372,10 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
 
         # Predict noise
         pred = self.model(
-            noisy_trajectory, timesteps,
-            local_cond=local_cond, global_cond=global_cond,
+            noisy_trajectory,
+            timesteps,
+            local_cond=local_cond,
+            global_cond=global_cond,
         )
 
         # Determine target based on prediction type

@@ -1,6 +1,6 @@
 # PRD-00: Dev Environment Setup
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** Nothing
 **Blocks:** PRD-01 through PRD-08
 

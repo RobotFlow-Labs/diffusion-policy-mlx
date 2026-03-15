@@ -70,7 +70,7 @@ class CropRandomizer(nn.Module):
             return self._center_crop(x)
 
     def _random_crop(self, x):
-        """Random spatial crop for each image in the batch."""
+        """Random spatial crop for each image in the batch (vectorized)."""
         B, C, H, W = x.shape
         ch, cw = self.crop_height, self.crop_width
 
@@ -80,15 +80,24 @@ class CropRandomizer(nn.Module):
             h_starts = mx.random.randint(0, H - ch, shape=(B,))
             w_starts = mx.random.randint(0, W - cw, shape=(B,))
 
-            # Extract crops per image
-            batch_crops = []
-            for b in range(B):
-                h0 = h_starts[b].item()
-                w0 = w_starts[b].item()
-                crop = x[b, :, h0 : h0 + ch, w0 : w0 + cw]
-                batch_crops.append(crop)
-            # (B, C, ch, cw)
-            crops.append(mx.stack(batch_crops, axis=0))
+            # Vectorized gather: build per-sample h and w index grids
+            # h_offsets: (B, ch) — each row is h_start[b] + [0..ch-1]
+            h_offsets = h_starts[:, None] + mx.arange(ch)[None, :]  # (B, ch)
+            # w_offsets: (B, cw)
+            w_offsets = w_starts[:, None] + mx.arange(cw)[None, :]  # (B, cw)
+
+            # Batch indices: (B, 1, 1) for broadcasting
+            b_idx = mx.arange(B)[:, None, None]  # (B, 1, 1)
+            h_idx = h_offsets[:, :, None]  # (B, ch, 1)
+            w_idx = w_offsets[:, None, :]  # (B, 1, cw)
+
+            # Gather from NCHW: x[b, :, h, w] for all (b, h, w) combinations
+            # Use x[:, :, h_idx, w_idx] style — index spatial dims per batch element
+            # Result shape: (B, C, ch, cw)
+            crop = x[b_idx, :, h_idx, w_idx]  # (B, ch, cw, C)
+            # The advanced indexing yields (B, ch, cw, C), transpose to NCHW
+            crop = mx.transpose(crop, (0, 3, 1, 2))  # (B, C, ch, cw)
+            crops.append(crop)
 
         if self.num_crops == 1:
             return crops[0]

@@ -15,6 +15,7 @@ from diffusion_policy_mlx.model.diffusion.positional_embedding import Sinusoidal
 
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -23,6 +24,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Conv1dBlock
 # ---------------------------------------------------------------------------
+
 
 class TestConv1dBlock:
     def test_shape_preserved(self):
@@ -55,6 +57,7 @@ class TestConv1dBlock:
 # Downsample1d
 # ---------------------------------------------------------------------------
 
+
 class TestDownsample1d:
     def test_halves_length(self):
         """Downsample1d should halve the spatial dimension."""
@@ -82,6 +85,7 @@ class TestDownsample1d:
 # ---------------------------------------------------------------------------
 # Upsample1d
 # ---------------------------------------------------------------------------
+
 
 class TestUpsample1d:
     def test_doubles_length(self):
@@ -114,6 +118,7 @@ class TestUpsample1d:
 # ---------------------------------------------------------------------------
 # SinusoidalPosEmb
 # ---------------------------------------------------------------------------
+
 
 class TestSinusoidalPosEmb:
     def test_output_shape(self):
@@ -161,6 +166,7 @@ class TestSinusoidalPosEmb:
     def test_matches_upstream(self):
         """Output should match upstream PyTorch SinusoidalPosEmb."""
         import sys
+
         sys.path.insert(0, "repositories/diffusion-policy-upstream")
         from diffusion_policy.model.diffusion.positional_embedding import (
             SinusoidalPosEmb as TorchSinusoidalPosEmb,
@@ -178,6 +184,4 @@ class TestSinusoidalPosEmb:
         mx.eval(out_mlx)
         out_torch = torch_emb(t_torch)
 
-        np.testing.assert_allclose(
-            np.array(out_mlx), out_torch.detach().numpy(), atol=1e-4
-        )
+        np.testing.assert_allclose(np.array(out_mlx), out_torch.detach().numpy(), atol=1e-4)

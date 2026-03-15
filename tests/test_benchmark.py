@@ -9,20 +9,16 @@ Tests cover:
   - Full diffusion loop benchmark (DDIM, small steps)
 """
 
-import sys
 import os
-
-import numpy as np
-import pytest
+import sys
 
 import mlx.core as mx
+import pytest
 
 # Ensure scripts/ is importable
 sys.path.insert(
     0,
-    os.path.join(
-        os.path.dirname(__file__), "..", "scripts"
-    ),
+    os.path.join(os.path.dirname(__file__), "..", "scripts"),
 )
 
 from benchmark import (
@@ -33,7 +29,6 @@ from benchmark import (
     create_model,
     run_single_inference,
 )
-
 
 # ---------------------------------------------------------------------------
 # BenchmarkResult tests
@@ -126,12 +121,8 @@ class TestSingleInference:
             down_dims=(32, 64),
             diffusion_step_embed_dim=32,
         )
-        inputs = create_dummy_inputs(
-            action_dim=2, obs_dim=32, horizon=8, n_obs_steps=2
-        )
-        result = run_single_inference(
-            model, inputs["sample"], 0, inputs["global_cond"]
-        )
+        inputs = create_dummy_inputs(action_dim=2, obs_dim=32, horizon=8, n_obs_steps=2)
+        result = run_single_inference(model, inputs["sample"], 0, inputs["global_cond"])
         assert result.shape == inputs["sample"].shape
         # Check no NaN
         assert not mx.any(mx.isnan(result)).item()
@@ -145,12 +136,8 @@ class TestSingleInference:
             down_dims=(16, 32),
             diffusion_step_embed_dim=16,
         )
-        inputs = create_dummy_inputs(
-            action_dim=4, obs_dim=16, horizon=4, n_obs_steps=1
-        )
-        result = run_single_inference(
-            model, inputs["sample"], 5, inputs["global_cond"]
-        )
+        inputs = create_dummy_inputs(action_dim=4, obs_dim=16, horizon=4, n_obs_steps=1)
+        result = run_single_inference(model, inputs["sample"], 5, inputs["global_cond"])
         assert result.shape == (1, 4, 4)
 
 
@@ -186,7 +173,7 @@ class TestBenchmarkSingleForward:
             horizon=8,
             n_obs_steps=2,
         )
-        assert all(l > 0 for l in result.latencies_ms)
+        assert all(lat > 0 for lat in result.latencies_ms)
 
     def test_latencies_reasonable(self):
         """Latencies for a tiny model should be under 60 seconds."""
@@ -198,7 +185,7 @@ class TestBenchmarkSingleForward:
             horizon=8,
             n_obs_steps=2,
         )
-        assert all(l < 60000 for l in result.latencies_ms)  # < 60s
+        assert all(lat < 60000 for lat in result.latencies_ms)  # < 60s
 
 
 class TestBenchmarkDiffusion:

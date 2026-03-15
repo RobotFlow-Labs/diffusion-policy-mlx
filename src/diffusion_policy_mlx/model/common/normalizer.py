@@ -24,10 +24,10 @@ from typing import Dict, Optional, Union
 import mlx.core as mx
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # SingleFieldLinearNormalizer
 # ---------------------------------------------------------------------------
+
 
 class SingleFieldLinearNormalizer:
     """Normalizes a single tensor field via an affine transform ``y = x * scale + offset``.
@@ -233,6 +233,7 @@ class SingleFieldLinearNormalizer:
 # LinearNormalizer
 # ---------------------------------------------------------------------------
 
+
 class LinearNormalizer:
     """Dict-based normalizer: one ``SingleFieldLinearNormalizer`` per key.
 
@@ -249,7 +250,9 @@ class LinearNormalizer:
     """
 
     def __init__(self):
-        self.params_dict: Dict[str, Union[SingleFieldLinearNormalizer, Dict[str, SingleFieldLinearNormalizer]]] = {}
+        self.params_dict: Dict[
+            str, Union[SingleFieldLinearNormalizer, Dict[str, SingleFieldLinearNormalizer]]
+        ] = {}
 
     def fit(
         self,
@@ -284,7 +287,9 @@ class LinearNormalizer:
 
     # -- item access -----------------------------------------------------------
 
-    def __getitem__(self, key: str) -> Union[SingleFieldLinearNormalizer, Dict[str, SingleFieldLinearNormalizer]]:
+    def __getitem__(
+        self, key: str
+    ) -> Union[SingleFieldLinearNormalizer, Dict[str, SingleFieldLinearNormalizer]]:
         return self.params_dict[key]
 
     def __setitem__(self, key: str, value):
@@ -310,15 +315,13 @@ class LinearNormalizer:
                         for k, v in value.items():
                             if k in entry:
                                 result[key][k] = (
-                                    entry[k].normalize(v) if forward
-                                    else entry[k].unnormalize(v)
+                                    entry[k].normalize(v) if forward else entry[k].unnormalize(v)
                                 )
                             else:
                                 result[key][k] = v
                     elif isinstance(entry, SingleFieldLinearNormalizer):
                         result[key] = (
-                            entry.normalize(value) if forward
-                            else entry.unnormalize(value)
+                            entry.normalize(value) if forward else entry.unnormalize(value)
                         )
                     else:
                         result[key] = value

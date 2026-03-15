@@ -9,7 +9,7 @@ sequences with episode-boundary padding.
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import zarr
@@ -37,9 +37,7 @@ class ReplayBuffer:
             # zarr v3: .members() returns (name, node) pairs
             self._keys = sorted(self._list_children(self._data))
 
-        self._episode_ends: np.ndarray = np.asarray(
-            self._meta["episode_ends"][:]
-        )
+        self._episode_ends: np.ndarray = np.asarray(self._meta["episode_ends"][:])
 
     # ------------------------------------------------------------------
     # zarr v3 compat: list child names

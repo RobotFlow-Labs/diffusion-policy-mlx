@@ -22,15 +22,15 @@ import mlx.utils
 import numpy as np
 import pytest
 
-from diffusion_policy_mlx.model.diffusion.conditional_unet1d import ConditionalUnet1D
-from diffusion_policy_mlx.model.diffusion.ema_model import EMAModel
 from diffusion_policy_mlx.model.common.lr_scheduler import (
-    CosineAnnealingLR,
     ConstantLR,
     ConstantWithWarmupLR,
+    CosineAnnealingLR,
     LinearLR,
     get_scheduler,
 )
+from diffusion_policy_mlx.model.diffusion.conditional_unet1d import ConditionalUnet1D
+from diffusion_policy_mlx.model.diffusion.ema_model import EMAModel
 from diffusion_policy_mlx.training.checkpoint import (
     TopKCheckpointManager,
     load_checkpoint,
@@ -38,10 +38,10 @@ from diffusion_policy_mlx.training.checkpoint import (
 )
 from diffusion_policy_mlx.training.train_config import TrainConfig
 
-
 # ---------------------------------------------------------------------------
 # EMA Tests
 # ---------------------------------------------------------------------------
+
 
 class TestEMADecaySchedule:
     """EMA decay ramps from 0 toward ~0.9999 following upstream formula."""
@@ -223,6 +223,7 @@ class TestEMAStateDictRoundTrip:
 # LR Scheduler Tests
 # ---------------------------------------------------------------------------
 
+
 class TestCosineAnnealingLR:
     def test_warmup_increases(self):
         """LR should increase during warmup."""
@@ -266,9 +267,7 @@ class TestCosineAnnealingLR:
     def test_end_approaches_min_lr(self):
         """At the end, LR should approach min_lr."""
         opt = mlx.optimizers.Adam(learning_rate=1e-3)
-        sched = CosineAnnealingLR(
-            opt, num_training_steps=1000, num_warmup_steps=0, min_lr=1e-5
-        )
+        sched = CosineAnnealingLR(opt, num_training_steps=1000, num_warmup_steps=0, min_lr=1e-5)
         for _ in range(1000):
             sched.step()
         lr = float(opt.learning_rate)
@@ -387,6 +386,7 @@ class TestGetSchedulerFactory:
 # Checkpoint Tests
 # ---------------------------------------------------------------------------
 
+
 class TestCheckpointSaveLoad:
     """Checkpoint save/load round-trip."""
 
@@ -467,8 +467,11 @@ class TestTopKCheckpointManager:
             for i, loss in enumerate([0.5, 0.3, 0.8, 0.1, 0.4]):
                 manager.save(
                     metric=loss,
-                    policy=model, ema=None, optimizer=None,
-                    epoch=i, step=i * 100,
+                    policy=model,
+                    ema=None,
+                    optimizer=None,
+                    epoch=i,
+                    step=i * 100,
                 )
 
             # Should have exactly 3 checkpoints
@@ -487,8 +490,11 @@ class TestTopKCheckpointManager:
             for i, score in enumerate([0.5, 0.9, 0.3, 0.7]):
                 manager.save(
                     metric=score,
-                    policy=model, ema=None, optimizer=None,
-                    epoch=i, step=i * 100,
+                    policy=model,
+                    ema=None,
+                    optimizer=None,
+                    epoch=i,
+                    step=i * 100,
                 )
 
             assert len(manager._checkpoints) == 2
@@ -499,6 +505,7 @@ class TestTopKCheckpointManager:
 # ---------------------------------------------------------------------------
 # TrainConfig Tests
 # ---------------------------------------------------------------------------
+
 
 class TestTrainConfig:
     def test_default_values(self):
@@ -538,6 +545,7 @@ class TestTrainConfig:
 # ---------------------------------------------------------------------------
 # Training Step: Loss Decreases
 # ---------------------------------------------------------------------------
+
 
 class TestTrainingStepLossDecreases:
     """Verify that a training step on synthetic data reduces loss."""
@@ -586,7 +594,7 @@ class TestTrainingStepLossDecreases:
         # Loss should trend downward significantly
         assert losses[-1] < losses[0] * 0.5, (
             f"Loss did not decrease enough: {losses[0]:.4f} -> {losses[-1]:.4f} "
-            f"(ratio: {losses[-1]/losses[0]:.2f}, expected < 0.5)"
+            f"(ratio: {losses[-1] / losses[0]:.2f}, expected < 0.5)"
         )
 
     def test_single_training_step_finite_loss(self):
@@ -601,7 +609,7 @@ class TestTrainingStepLossDecreases:
 
         def loss_fn(model, x, t):
             pred = model(x, t)
-            return mx.mean(pred ** 2)
+            return mx.mean(pred**2)
 
         loss, grads = nn.value_and_grad(unet, loss_fn)(unet, x, t)
         mx.eval(loss, grads)
@@ -611,6 +619,7 @@ class TestTrainingStepLossDecreases:
 # ---------------------------------------------------------------------------
 # Collate batch test
 # ---------------------------------------------------------------------------
+
 
 class TestCollateBatch:
     def test_collate_flat(self):

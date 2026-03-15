@@ -10,10 +10,10 @@ from typing import Union
 import mlx.core as mx
 import mlx.nn as nn
 
-
 # ---------------------------------------------------------------------------
 # Conv1d  (NCL ↔ NLC)
 # ---------------------------------------------------------------------------
+
 
 class Conv1d(nn.Module):
     """Drop-in for ``torch.nn.Conv1d`` with an NCL interface.
@@ -66,6 +66,7 @@ class Conv1d(nn.Module):
 # ConvTranspose1d  (NCL ↔ NLC)
 # ---------------------------------------------------------------------------
 
+
 class ConvTranspose1d(nn.Module):
     """Drop-in for ``torch.nn.ConvTranspose1d`` with an NCL interface."""
 
@@ -96,6 +97,7 @@ class ConvTranspose1d(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
+        self.output_padding = output_padding
         self.dilation = dilation
 
     def __call__(self, x: mx.array) -> mx.array:
@@ -110,6 +112,7 @@ class ConvTranspose1d(nn.Module):
 # ---------------------------------------------------------------------------
 # Conv2d  (NCHW ↔ NHWC)
 # ---------------------------------------------------------------------------
+
 
 class Conv2d(nn.Module):
     """Drop-in for ``torch.nn.Conv2d`` with an NCHW interface.
@@ -158,6 +161,7 @@ class Conv2d(nn.Module):
 # GroupNorm  (channels-first wrapper)
 # ---------------------------------------------------------------------------
 
+
 class GroupNorm(nn.Module):
     """``torch.nn.GroupNorm`` — channels-first wrapper around MLX GroupNorm.
 
@@ -174,7 +178,11 @@ class GroupNorm(nn.Module):
     ):
         super().__init__()
         self._gn = nn.GroupNorm(
-            num_groups, num_channels, eps=eps, affine=affine, pytorch_compatible=True,
+            num_groups,
+            num_channels,
+            eps=eps,
+            affine=affine,
+            pytorch_compatible=True,
         )
         self.num_groups = num_groups
         self.num_channels = num_channels
@@ -199,6 +207,7 @@ class GroupNorm(nn.Module):
 # ---------------------------------------------------------------------------
 # BatchNorm2d  (channels-first wrapper)
 # ---------------------------------------------------------------------------
+
 
 class BatchNorm2d(nn.Module):
     """``torch.nn.BatchNorm2d`` — channels-first wrapper around MLX BatchNorm."""
@@ -226,6 +235,7 @@ class BatchNorm2d(nn.Module):
 # Sequential
 # ---------------------------------------------------------------------------
 
+
 class Sequential(nn.Module):
     """``torch.nn.Sequential`` — sequential module composition."""
 
@@ -245,6 +255,7 @@ class Sequential(nn.Module):
 # ---------------------------------------------------------------------------
 # Identity
 # ---------------------------------------------------------------------------
+
 
 class Identity(nn.Module):
     """``torch.nn.Identity``."""

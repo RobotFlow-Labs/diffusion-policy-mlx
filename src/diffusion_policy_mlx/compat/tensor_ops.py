@@ -4,7 +4,7 @@ Provides thin wrappers for torch.* calls used in upstream diffusion_policy
 so that ported code can use MLX arrays with minimal changes.
 """
 
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence
 
 import mlx.core as mx
 
@@ -80,11 +80,7 @@ def flatten(x: mx.array, start_dim: int = 0, end_dim: int = -1) -> mx.array:
         start_dim += ndim
     if end_dim < 0:
         end_dim += ndim
-    new_shape = (
-        list(shape[:start_dim])
-        + [-1]
-        + list(shape[end_dim + 1 :])
-    )
+    new_shape = list(shape[:start_dim]) + [-1] + list(shape[end_dim + 1 :])
     return x.reshape(new_shape)
 
 

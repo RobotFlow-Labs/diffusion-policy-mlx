@@ -10,93 +10,20 @@ matching the PyTorch upstream interface. Internal MLX ops use NLC
 import mlx.core as mx
 import mlx.nn as nn
 
-
-# ---------------------------------------------------------------------------
-# NCL wrappers — MLX native layers expect NLC (channels-last)
-# ---------------------------------------------------------------------------
-
-class _Conv1d(nn.Module):
-    """Conv1d with NCL (channels-first) interface.
-
-    MLX's nn.Conv1d expects NLC input. This wrapper transposes
-    NCL -> NLC before the conv and NLC -> NCL after.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        bias: bool = True,
-    ):
-        super().__init__()
-        self._conv = nn.Conv1d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, bias=bias,
-        )
-
-    def __call__(self, x: mx.array) -> mx.array:
-        # x: (B, C, L) -> (B, L, C)
-        x = mx.transpose(x, axes=(0, 2, 1))
-        x = self._conv(x)
-        # (B, L', C') -> (B, C', L')
-        return mx.transpose(x, axes=(0, 2, 1))
-
-
-class _ConvTranspose1d(nn.Module):
-    """ConvTranspose1d with NCL (channels-first) interface.
-
-    MLX's nn.ConvTranspose1d expects NLC input.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        bias: bool = True,
-    ):
-        super().__init__()
-        self._conv = nn.ConvTranspose1d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, bias=bias,
-        )
-
-    def __call__(self, x: mx.array) -> mx.array:
-        # x: (B, C, L) -> (B, L, C)
-        x = mx.transpose(x, axes=(0, 2, 1))
-        x = self._conv(x)
-        # (B, L', C') -> (B, C', L')
-        return mx.transpose(x, axes=(0, 2, 1))
-
-
-class _GroupNorm(nn.Module):
-    """GroupNorm with NCL (channels-first) interface.
-
-    MLX's nn.GroupNorm normalises over the last axis (channels-last).
-    This wrapper transposes NCL -> NLC, applies GroupNorm, then
-    transposes back.
-    """
-
-    def __init__(self, num_groups: int, num_channels: int):
-        super().__init__()
-        self._norm = nn.GroupNorm(num_groups, num_channels, pytorch_compatible=True)
-
-    def __call__(self, x: mx.array) -> mx.array:
-        # x: (B, C, L) -> (B, L, C)
-        x = mx.transpose(x, axes=(0, 2, 1))
-        x = self._norm(x)
-        # (B, L, C) -> (B, C, L)
-        return mx.transpose(x, axes=(0, 2, 1))
-
+from diffusion_policy_mlx.compat.nn_layers import (
+    Conv1d as _Conv1d,
+)
+from diffusion_policy_mlx.compat.nn_layers import (
+    ConvTranspose1d as _ConvTranspose1d,
+)
+from diffusion_policy_mlx.compat.nn_layers import (
+    GroupNorm as _GroupNorm,
+)
 
 # ---------------------------------------------------------------------------
 # Identity — drop-in replacement for nn.Identity on the up/down paths
 # ---------------------------------------------------------------------------
+
 
 class _Identity(nn.Module):
     """Identity module (no-op), used where upstream uses nn.Identity()."""
@@ -108,6 +35,7 @@ class _Identity(nn.Module):
 # ---------------------------------------------------------------------------
 # Public components (NCL interface)
 # ---------------------------------------------------------------------------
+
 
 class Downsample1d(nn.Module):
     """Strided Conv1d for 2x spatial downsampling.
@@ -155,7 +83,10 @@ class Conv1dBlock(nn.Module):
     ):
         super().__init__()
         self.conv = _Conv1d(
-            inp_channels, out_channels, kernel_size, padding=kernel_size // 2,
+            inp_channels,
+            out_channels,
+            kernel_size,
+            padding=kernel_size // 2,
         )
         self.group_norm = _GroupNorm(n_groups, out_channels)
         self.mish = nn.Mish()

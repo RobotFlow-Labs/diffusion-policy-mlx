@@ -1,6 +1,6 @@
 # PRD-05: Policy Assembly
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** PRD-01 (compat), PRD-02 (vision), PRD-03 (UNet), PRD-04 (scheduler)
 **Blocks:** PRD-06 (Training Loop)
 

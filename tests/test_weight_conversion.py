@@ -10,17 +10,16 @@ Tests cover:
   - Round-trip: dummy torch state dict -> convert -> verify shapes
 """
 
-import sys
 import os
+import sys
+
 import numpy as np
 import pytest
 
 # Ensure scripts/ is importable
 sys.path.insert(
     0,
-    os.path.join(
-        os.path.dirname(__file__), "..", "scripts"
-    ),
+    os.path.join(os.path.dirname(__file__), "..", "scripts"),
 )
 
 try:
@@ -30,22 +29,20 @@ try:
 except ImportError:
     HAS_TORCH = False
 
-import mlx.core as mx
 
 from convert_weights import (
+    _is_conv1d_weight,
+    _is_conv2d_weight,
     convert_state_dict,
     extract_normalizer,
     map_key_path,
-    map_unet_key,
-    map_resnet_key,
     map_obs_encoder_key,
+    map_resnet_key,
+    map_unet_key,
     shape_based_match,
-    transpose_conv2d,
     transpose_conv1d,
-    _is_conv2d_weight,
-    _is_conv1d_weight,
+    transpose_conv2d,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shape transposition tests
@@ -282,12 +279,10 @@ class TestResnetKeyMapping:
     """Test key mapping for ResNet."""
 
     def test_downsample_conv(self):
-        assert map_resnet_key("layer1.0.downsample.0.weight") == \
-            "layer1.0.downsample.conv.weight"
+        assert map_resnet_key("layer1.0.downsample.0.weight") == "layer1.0.downsample.conv.weight"
 
     def test_downsample_bn(self):
-        assert map_resnet_key("layer1.0.downsample.1.weight") == \
-            "layer1.0.downsample.bn.weight"
+        assert map_resnet_key("layer1.0.downsample.1.weight") == "layer1.0.downsample.bn.weight"
 
     def test_regular_key(self):
         assert map_resnet_key("conv1.weight") == "conv1.weight"
@@ -463,8 +458,12 @@ class TestRoundTrip:
             "obs_encoder.obs_nets.image.nets.0.nets.conv1.weight": torch.randn(64, 3, 7, 7),
             "obs_encoder.obs_nets.image.nets.0.nets.bn1.weight": torch.randn(64),
             "obs_encoder.obs_nets.image.nets.0.nets.bn1.bias": torch.randn(64),
-            "obs_encoder.obs_nets.image.nets.0.nets.layer1.0.conv1.weight": torch.randn(64, 64, 3, 3),
-            "obs_encoder.obs_nets.image.nets.0.nets.layer1.0.downsample.0.weight": torch.randn(64, 64, 1, 1),
+            "obs_encoder.obs_nets.image.nets.0.nets.layer1.0.conv1.weight": torch.randn(
+                64, 64, 3, 3
+            ),
+            "obs_encoder.obs_nets.image.nets.0.nets.layer1.0.downsample.0.weight": torch.randn(
+                64, 64, 1, 1
+            ),
             "obs_encoder.obs_nets.image.nets.0.nets.layer1.0.downsample.1.weight": torch.randn(64),
             "obs_encoder.obs_nets.image.nets.0.nets.bn1.num_batches_tracked": torch.tensor(100),
         }

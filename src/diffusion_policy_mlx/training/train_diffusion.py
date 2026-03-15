@@ -9,8 +9,7 @@ using MLX's functional gradient API (``mlx.nn.value_and_grad``).
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -24,41 +23,8 @@ from diffusion_policy_mlx.training.checkpoint import (
     TopKCheckpointManager,
     save_checkpoint,
 )
+from diffusion_policy_mlx.training.collate import collate_batch  # noqa: F401
 from diffusion_policy_mlx.training.train_config import TrainConfig
-
-
-def collate_batch(samples: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Collate a list of dataset samples into batched mx.arrays.
-
-    Handles nested dicts (e.g. ``{'obs': {'image': ..., 'agent_pos': ...}}``)
-    by recursively stacking along a new batch dimension.
-
-    Args:
-        samples: List of sample dicts from the dataset.
-
-    Returns:
-        Batched dict with mx.array values.
-    """
-    if not samples:
-        return {}
-
-    batch: Dict[str, Any] = {}
-    for key in samples[0]:
-        if isinstance(samples[0][key], dict):
-            batch[key] = {}
-            for subkey in samples[0][key]:
-                vals = [s[key][subkey] for s in samples]
-                if isinstance(vals[0], mx.array):
-                    batch[key][subkey] = mx.stack(vals)
-                else:
-                    batch[key][subkey] = mx.array(np.stack(vals))
-        else:
-            vals = [s[key] for s in samples]
-            if isinstance(vals[0], mx.array):
-                batch[key] = mx.stack(vals)
-            else:
-                batch[key] = mx.array(np.stack(vals))
-    return batch
 
 
 def train(config: TrainConfig) -> None:
@@ -73,29 +39,11 @@ def train(config: TrainConfig) -> None:
     Args:
         config: Training configuration dataclass.
     """
-    # Late imports for policy/dataset — these may not be available yet
-    # as other PRDs are building them concurrently.
-    try:
-        from diffusion_policy_mlx.dataset.pusht_image_dataset import (
-            PushTImageDataset,
-        )
-    except ImportError:
-        raise ImportError(
-            "PushTImageDataset not yet available. "
-            "Ensure PRD-04 (Dataset) is completed first."
-        )
-
-    try:
-        from diffusion_policy_mlx.policy.diffusion_unet_hybrid_image_policy import (
-            DiffusionUnetHybridImagePolicy,
-        )
-    except ImportError:
-        raise ImportError(
-            "DiffusionUnetHybridImagePolicy not yet available. "
-            "Ensure PRD-05 (Policy Assembly) is completed first."
-        )
-
     from diffusion_policy_mlx.compat.schedulers import DDPMScheduler
+    from diffusion_policy_mlx.dataset.pusht_image_dataset import PushTImageDataset
+    from diffusion_policy_mlx.policy.diffusion_unet_hybrid_image_policy import (
+        DiffusionUnetHybridImagePolicy,
+    )
 
     # Set random seed
     np.random.seed(config.seed)
@@ -157,19 +105,13 @@ def train(config: TrainConfig) -> None:
     # 6. LR scheduler
     steps_per_epoch = max(1, len(dataset) // config.batch_size)
     total_steps = config.num_epochs * steps_per_epoch
-    lr_sched = get_scheduler(
-        config.lr_scheduler, optimizer, total_steps, config.lr_warmup_steps
-    )
+    lr_sched = get_scheduler(config.lr_scheduler, optimizer, total_steps, config.lr_warmup_steps)
 
     # 7. Loss + grad function (MLX functional pattern)
-    loss_and_grad_fn = nn.value_and_grad(
-        policy, lambda m, b: m.compute_loss(b)
-    )
+    loss_and_grad_fn = nn.value_and_grad(policy, lambda m, b: m.compute_loss(b))
 
     # 8. Checkpoint manager
-    topk_manager = TopKCheckpointManager(
-        save_dir=config.checkpoint_dir, k=config.top_k, mode="min"
-    )
+    topk_manager = TopKCheckpointManager(save_dir=config.checkpoint_dir, k=config.top_k, mode="min")
 
     # 9. Training loop
     global_step = 0
@@ -223,15 +165,16 @@ def train(config: TrainConfig) -> None:
         # End of epoch
         epoch_time = time.time() - epoch_start
         avg_loss = float(np.mean(epoch_losses)) if epoch_losses else 0.0
-        print(
-            f"Epoch {epoch:4d} done in {epoch_time:.1f}s | "
-            f"avg_loss {avg_loss:.6f}"
-        )
+        print(f"Epoch {epoch:4d} done in {epoch_time:.1f}s | avg_loss {avg_loss:.6f}")
 
         # Periodic checkpoint
         if (epoch + 1) % config.save_every_n_epochs == 0:
             save_checkpoint(
-                policy, ema, optimizer, epoch, global_step,
+                policy,
+                ema,
+                optimizer,
+                epoch,
+                global_step,
                 config.checkpoint_dir,
             )
 
@@ -254,7 +197,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Train Diffusion Policy (MLX)")
     parser.add_argument(
-        "--config", type=str, default=None,
+        "--config",
+        type=str,
+        default=None,
         help="Path to YAML config file",
     )
     parser.add_argument("--dataset", type=str, default=None)

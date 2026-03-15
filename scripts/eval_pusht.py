@@ -27,15 +27,13 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
-import numpy as np
+from typing import List, Optional, Tuple
 
 import mlx.core as mx
-import mlx.nn as nn
+import numpy as np
 
+from diffusion_policy_mlx.compat.schedulers import DDIMScheduler, DDPMScheduler
 from diffusion_policy_mlx.model.diffusion.conditional_unet1d import ConditionalUnet1D
-from diffusion_policy_mlx.compat.schedulers import DDPMScheduler, DDIMScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -124,9 +122,7 @@ class DiffusionPolicyInference:
         self.n_action_steps = n_action_steps
         self.num_inference_steps = num_inference_steps
 
-    def predict_action(
-        self, obs_features: mx.array
-    ) -> mx.array:
+    def predict_action(self, obs_features: mx.array) -> mx.array:
         """Predict action sequence from observation features.
 
         Args:
@@ -220,7 +216,7 @@ def load_policy(
         model_weights = {}
         for k, v in weights.items():
             if k.startswith("model."):
-                model_weights[k[len("model."):]] = v
+                model_weights[k[len("model.") :]] = v
         if model_weights:
             model.load_weights(list(model_weights.items()))
             logger.info("Loaded weights from %s", weights_path)
@@ -297,14 +293,12 @@ class SyntheticPushTEnv:
         self._target = self._rng.randn(self.action_dim) * 0.5
         return self._get_obs()
 
-    def step(
-        self, action: np.ndarray
-    ) -> Tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
         """Execute action and return (obs, reward, done, info)."""
         self._step_count += 1
 
         # Simple reward: negative distance to target
-        dist = np.linalg.norm(action[:self.action_dim] - self._target)
+        dist = np.linalg.norm(action[: self.action_dim] - self._target)
         reward = max(0.0, 1.0 - dist)
         self._total_reward += reward
 
@@ -402,15 +396,11 @@ def evaluate(
                     recent = obs_history[-n_obs_steps:]
                 else:
                     # Pad with first observation
-                    recent = [obs_history[0]] * (
-                        n_obs_steps - len(obs_history)
-                    ) + obs_history
+                    recent = [obs_history[0]] * (n_obs_steps - len(obs_history)) + obs_history
 
                 # Concatenate observations into global conditioning
                 obs_features = np.concatenate(recent, axis=-1)
-                obs_features = mx.array(
-                    obs_features.reshape(1, -1), dtype=mx.float32
-                )
+                obs_features = mx.array(obs_features.reshape(1, -1), dtype=mx.float32)
 
                 # Predict actions
                 start_t = time.perf_counter()
@@ -443,12 +433,12 @@ def evaluate(
                 f"Episode {ep}: reward={total_reward:.3f}, "
                 f"success={ep_result.success}, "
                 f"steps={step_count}, "
-                f"inference={total_inference_time*1000:.1f}ms"
+                f"inference={total_inference_time * 1000:.1f}ms"
             )
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(eval_result.summary())
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
     return eval_result
 
@@ -459,9 +449,7 @@ def evaluate(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Evaluate Diffusion Policy on PushT environment"
-    )
+    parser = argparse.ArgumentParser(description="Evaluate Diffusion Policy on PushT environment")
     parser.add_argument(
         "--checkpoint",
         type=str,

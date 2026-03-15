@@ -1,15 +1,11 @@
 """Tests for PRD-02: Vision Encoder (ResNet + MultiImageObsEncoder + CropRandomizer)."""
 
+import mlx.core as mx
 import numpy as np
 import pytest
 
-import mlx.core as mx
-
 from diffusion_policy_mlx.compat.vision import (
-    BasicBlock,
-    Bottleneck,
     Identity,
-    ResNet,
     load_torchvision_weights,
     replace_submodules,
     resnet18,
@@ -17,8 +13,8 @@ from diffusion_policy_mlx.compat.vision import (
     resnet50,
 )
 from diffusion_policy_mlx.model.vision.crop_randomizer import CropRandomizer
-from diffusion_policy_mlx.model.vision.multi_image_obs_encoder import MultiImageObsEncoder
 from diffusion_policy_mlx.model.vision.model_getter import get_resnet
+from diffusion_policy_mlx.model.vision.multi_image_obs_encoder import MultiImageObsEncoder
 
 try:
     import torch
@@ -32,6 +28,7 @@ except ImportError:
 # -----------------------------------------------------------------------
 # ResNet shape tests
 # -----------------------------------------------------------------------
+
 
 class TestResNet18Shape:
     def test_output_shape_224(self):
@@ -83,6 +80,7 @@ class TestResNet34Shape:
 # -----------------------------------------------------------------------
 # Cross-framework numerical test
 # -----------------------------------------------------------------------
+
 
 @pytest.mark.skipif(not HAS_TORCH, reason="torch/torchvision not installed")
 class TestCrossFramework:
@@ -143,6 +141,7 @@ class TestCrossFramework:
 # Model getter tests
 # -----------------------------------------------------------------------
 
+
 class TestModelGetter:
     def test_get_resnet18(self):
         """get_resnet returns feature extractor with Identity fc."""
@@ -160,6 +159,7 @@ class TestModelGetter:
 # -----------------------------------------------------------------------
 # CropRandomizer tests
 # -----------------------------------------------------------------------
+
 
 class TestCropRandomizer:
     def test_train_mode_shape(self):
@@ -214,6 +214,7 @@ class TestCropRandomizer:
 # -----------------------------------------------------------------------
 # MultiImageObsEncoder tests
 # -----------------------------------------------------------------------
+
 
 class TestMultiImageObsEncoder:
     def test_single_camera_with_lowdim(self):
@@ -319,6 +320,7 @@ class TestMultiImageObsEncoder:
 # -----------------------------------------------------------------------
 # replace_submodules tests
 # -----------------------------------------------------------------------
+
 
 class TestReplaceSubmodules:
     def test_replace_batchnorm(self):

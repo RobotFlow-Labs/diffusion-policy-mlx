@@ -1,6 +1,6 @@
 # PRD-01: Compat Foundation
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** PRD-00
 **Blocks:** PRD-02, PRD-03, PRD-04, PRD-05, PRD-06
 

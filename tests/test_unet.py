@@ -13,6 +13,7 @@ from diffusion_policy_mlx.model.diffusion.conditional_unet1d import (
 
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -21,6 +22,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # ConditionalResidualBlock1D
 # ---------------------------------------------------------------------------
+
 
 class TestConditionalResidualBlock1D:
     def test_same_channels(self):
@@ -43,9 +45,7 @@ class TestConditionalResidualBlock1D:
 
     def test_film_scale_bias(self):
         """FiLM with cond_predict_scale=True."""
-        block = ConditionalResidualBlock1D(
-            16, 32, cond_dim=64, n_groups=8, cond_predict_scale=True
-        )
+        block = ConditionalResidualBlock1D(16, 32, cond_dim=64, n_groups=8, cond_predict_scale=True)
         x = mx.random.normal((2, 16, 10))
         cond = mx.random.normal((2, 64))
         out = block(x, cond)
@@ -68,6 +68,7 @@ class TestConditionalResidualBlock1D:
 # ConditionalUnet1D — shape tests
 # ---------------------------------------------------------------------------
 
+
 class TestConditionalUnet1DShape:
     def test_basic_shape(self):
         """Output shape should be (B, T, input_dim)."""
@@ -80,9 +81,7 @@ class TestConditionalUnet1DShape:
 
     def test_with_global_cond(self):
         """Should work with global conditioning."""
-        unet = ConditionalUnet1D(
-            input_dim=2, global_cond_dim=64, down_dims=[32, 64]
-        )
+        unet = ConditionalUnet1D(input_dim=2, global_cond_dim=64, down_dims=[32, 64])
         x = mx.random.normal((4, 16, 2))
         t = mx.array([10, 20, 30, 40])
         cond = mx.random.normal((4, 64))
@@ -128,9 +127,7 @@ class TestConditionalUnet1DShape:
 
     def test_with_cond_predict_scale(self):
         """FiLM scale+bias mode should produce correct shape."""
-        unet = ConditionalUnet1D(
-            input_dim=2, down_dims=[16, 32], cond_predict_scale=True
-        )
+        unet = ConditionalUnet1D(input_dim=2, down_dims=[16, 32], cond_predict_scale=True)
         x = mx.random.normal((2, 8, 2))
         t = mx.array([1, 2])
         out = unet(x, t)
@@ -139,9 +136,7 @@ class TestConditionalUnet1DShape:
 
     def test_with_local_cond(self):
         """Local conditioning path should produce correct shape."""
-        unet = ConditionalUnet1D(
-            input_dim=2, local_cond_dim=8, down_dims=[32, 64]
-        )
+        unet = ConditionalUnet1D(input_dim=2, local_cond_dim=8, down_dims=[32, 64])
         x = mx.random.normal((2, 16, 2))
         t = mx.array([1, 2])
         local = mx.random.normal((2, 16, 8))
@@ -167,6 +162,7 @@ class TestConditionalUnet1DShape:
 # ConditionalUnet1D — gradient flow
 # ---------------------------------------------------------------------------
 
+
 class TestConditionalUnet1DGradient:
     def test_gradient_flow(self):
         """Verify gradients flow through all parameters."""
@@ -176,7 +172,7 @@ class TestConditionalUnet1DGradient:
 
         def loss_fn(model, x, t):
             out = model(x, t)
-            return mx.mean(out ** 2)
+            return mx.mean(out**2)
 
         loss, grads = nn.value_and_grad(unet, loss_fn)(unet, x, t)
         mx.eval(loss, grads)
@@ -191,16 +187,14 @@ class TestConditionalUnet1DGradient:
 
     def test_gradient_flow_with_global_cond(self):
         """Gradients should flow through global conditioning path."""
-        unet = ConditionalUnet1D(
-            input_dim=2, global_cond_dim=32, down_dims=[16, 32]
-        )
+        unet = ConditionalUnet1D(input_dim=2, global_cond_dim=32, down_dims=[16, 32])
         x = mx.random.normal((2, 8, 2))
         t = mx.array([5, 10])
         cond = mx.random.normal((2, 32))
 
         def loss_fn(model, x, t, cond):
             out = model(x, t, global_cond=cond)
-            return mx.mean(out ** 2)
+            return mx.mean(out**2)
 
         loss, grads = nn.value_and_grad(unet, loss_fn)(unet, x, t, cond)
         mx.eval(loss, grads)
@@ -214,6 +208,7 @@ class TestConditionalUnet1DGradient:
 # ---------------------------------------------------------------------------
 # ConditionalUnet1D — determinism
 # ---------------------------------------------------------------------------
+
 
 class TestConditionalUnet1DDeterminism:
     def test_deterministic_output(self):
@@ -234,15 +229,18 @@ class TestConditionalUnet1DDeterminism:
 # Cross-framework match (optional, requires torch)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
 class TestConditionalUnet1DMatchUpstream:
     def test_sinusoidal_emb_matches(self):
         """Timestep embeddings should match upstream exactly."""
         import sys
+
         sys.path.insert(0, "repositories/diffusion-policy-upstream")
         from diffusion_policy.model.diffusion.positional_embedding import (
             SinusoidalPosEmb as TorchSinPosEmb,
         )
+
         from diffusion_policy_mlx.model.diffusion.positional_embedding import (
             SinusoidalPosEmb as MLXSinPosEmb,
         )

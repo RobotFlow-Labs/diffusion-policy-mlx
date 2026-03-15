@@ -12,17 +12,16 @@ Tests SingleFieldLinearNormalizer and LinearNormalizer:
 
 import mlx.core as mx
 import numpy as np
-import pytest
 
 from diffusion_policy_mlx.model.common.normalizer import (
     LinearNormalizer,
     SingleFieldLinearNormalizer,
 )
 
-
 # ---------------------------------------------------------------------------
 # SingleFieldLinearNormalizer
 # ---------------------------------------------------------------------------
+
 
 class TestSingleFieldLinearNormalizerLimits:
     """Tests for limits mode."""
@@ -43,9 +42,7 @@ class TestSingleFieldLinearNormalizerLimits:
         norm = SingleFieldLinearNormalizer.create_fit(data, mode="limits")
         normed = norm.normalize(data)
         recovered = norm.unnormalize(normed)
-        np.testing.assert_allclose(
-            np.array(recovered), np.array(data), atol=1e-5
-        )
+        np.testing.assert_allclose(np.array(recovered), np.array(data), atol=1e-5)
 
     def test_custom_range(self):
         """Custom output range [0, 1]."""
@@ -72,9 +69,7 @@ class TestSingleFieldLinearNormalizerLimits:
         """fit_offset=False should use zero offset."""
         mx.random.seed(42)
         data = mx.random.uniform(shape=(100, 2)) * 10 - 5
-        norm = SingleFieldLinearNormalizer.create_fit(
-            data, mode="limits", fit_offset=False
-        )
+        norm = SingleFieldLinearNormalizer.create_fit(data, mode="limits", fit_offset=False)
         assert float(mx.max(mx.abs(norm.offset))) == 0.0
 
 
@@ -97,9 +92,7 @@ class TestSingleFieldLinearNormalizerGaussian:
         norm = SingleFieldLinearNormalizer.create_fit(data, mode="gaussian")
         normed = norm.normalize(data)
         recovered = norm.unnormalize(normed)
-        np.testing.assert_allclose(
-            np.array(recovered), np.array(data), atol=1e-4
-        )
+        np.testing.assert_allclose(np.array(recovered), np.array(data), atol=1e-4)
 
 
 class TestSingleFieldLinearNormalizerFactories:
@@ -130,9 +123,7 @@ class TestSingleFieldLinearNormalizerFactories:
         norm = SingleFieldLinearNormalizer.create_fit(data, mode="limits")
         sd = norm.state_dict()
 
-        norm2 = SingleFieldLinearNormalizer(
-            scale=sd["scale"], offset=sd["offset"]
-        )
+        norm2 = SingleFieldLinearNormalizer(scale=sd["scale"], offset=sd["offset"])
         test_data = mx.random.uniform(shape=(5, 2))
         np.testing.assert_allclose(
             np.array(norm.normalize(test_data)),
@@ -145,6 +136,7 @@ class TestSingleFieldLinearNormalizerFactories:
 # LinearNormalizer
 # ---------------------------------------------------------------------------
 
+
 class TestLinearNormalizer:
     """Tests for the dict-based LinearNormalizer."""
 
@@ -152,10 +144,12 @@ class TestLinearNormalizer:
         """Normalize a flat dict of tensors."""
         mx.random.seed(42)
         norm = LinearNormalizer()
-        norm.fit({
-            "action": mx.random.uniform(shape=(100, 16, 2)),
-            "agent_pos": mx.random.uniform(shape=(100, 16, 2)),
-        })
+        norm.fit(
+            {
+                "action": mx.random.uniform(shape=(100, 16, 2)),
+                "agent_pos": mx.random.uniform(shape=(100, 16, 2)),
+            }
+        )
         batch = {
             "action": mx.random.uniform(shape=(4, 16, 2)),
             "agent_pos": mx.random.uniform(shape=(4, 16, 2)),
@@ -168,12 +162,14 @@ class TestLinearNormalizer:
         """Normalize a nested dict (obs with sub-keys)."""
         mx.random.seed(42)
         norm = LinearNormalizer()
-        norm.fit({
-            "obs": {
-                "agent_pos": mx.random.uniform(shape=(100, 2)) * 10,
-            },
-            "action": mx.random.uniform(shape=(100, 2)) * 5,
-        })
+        norm.fit(
+            {
+                "obs": {
+                    "agent_pos": mx.random.uniform(shape=(100, 2)) * 10,
+                },
+                "action": mx.random.uniform(shape=(100, 2)) * 5,
+            }
+        )
         batch = {
             "obs": {"agent_pos": mx.random.uniform(shape=(4, 2)) * 10},
             "action": mx.random.uniform(shape=(4, 2)) * 5,
@@ -228,10 +224,12 @@ class TestLinearNormalizer:
         """state_dict -> load_state_dict preserves LinearNormalizer."""
         mx.random.seed(42)
         norm = LinearNormalizer()
-        norm.fit({
-            "action": mx.random.uniform(shape=(50, 2)) * 100,
-            "obs": mx.random.uniform(shape=(50, 4)) * 100,
-        })
+        norm.fit(
+            {
+                "action": mx.random.uniform(shape=(50, 2)) * 100,
+                "obs": mx.random.uniform(shape=(50, 4)) * 100,
+            }
+        )
         sd = norm.state_dict()
 
         norm2 = LinearNormalizer()
@@ -243,12 +241,8 @@ class TestLinearNormalizer:
         }
         out1 = norm.normalize(batch)
         out2 = norm2.normalize(batch)
-        np.testing.assert_allclose(
-            np.array(out1["action"]), np.array(out2["action"]), atol=1e-6
-        )
-        np.testing.assert_allclose(
-            np.array(out1["obs"]), np.array(out2["obs"]), atol=1e-6
-        )
+        np.testing.assert_allclose(np.array(out1["action"]), np.array(out2["action"]), atol=1e-6)
+        np.testing.assert_allclose(np.array(out1["obs"]), np.array(out2["obs"]), atol=1e-6)
 
     def test_passthrough_unknown_keys(self):
         """Keys not in the normalizer should pass through unchanged."""
@@ -259,6 +253,4 @@ class TestLinearNormalizer:
             "extra": mx.array([1.0, 2.0]),
         }
         out = norm.normalize(batch)
-        np.testing.assert_allclose(
-            np.array(out["extra"]), np.array(batch["extra"]), atol=1e-7
-        )
+        np.testing.assert_allclose(np.array(out["extra"]), np.array(batch["extra"]), atol=1e-7)

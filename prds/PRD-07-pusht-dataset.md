@@ -1,6 +1,6 @@
 # PRD-07: PushT Dataset
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** PRD-00 (dev environment), PRD-05 (normalizer)
 **Blocks:** PRD-08 (Evaluation)
 

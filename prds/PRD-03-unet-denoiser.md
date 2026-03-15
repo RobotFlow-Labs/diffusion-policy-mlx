@@ -1,6 +1,6 @@
 # PRD-03: UNet Denoiser
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** PRD-01 (compat layer)
 **Blocks:** PRD-05 (Policy Assembly)
 

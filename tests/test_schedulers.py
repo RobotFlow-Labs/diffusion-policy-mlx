@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 import mlx.core as mx
 import numpy as np
 import pytest
@@ -269,12 +267,8 @@ class TestCrossFrameworkDDPM:
     def test_alphas_match_diffusers_cosine(self):
         from diffusers import DDPMScheduler as DiffusersDDPM
 
-        ours = DDPMScheduler(
-            num_train_timesteps=100, beta_schedule="squaredcos_cap_v2"
-        )
-        theirs = DiffusersDDPM(
-            num_train_timesteps=100, beta_schedule="squaredcos_cap_v2"
-        )
+        ours = DDPMScheduler(num_train_timesteps=100, beta_schedule="squaredcos_cap_v2")
+        theirs = DiffusersDDPM(num_train_timesteps=100, beta_schedule="squaredcos_cap_v2")
         np.testing.assert_allclose(
             np.array(ours.alphas_cumprod),
             theirs.alphas_cumprod.numpy(),
@@ -284,12 +278,8 @@ class TestCrossFrameworkDDPM:
     def test_alphas_match_diffusers_linear(self):
         from diffusers import DDPMScheduler as DiffusersDDPM
 
-        ours = DDPMScheduler(
-            num_train_timesteps=100, beta_schedule="linear"
-        )
-        theirs = DiffusersDDPM(
-            num_train_timesteps=100, beta_schedule="linear"
-        )
+        ours = DDPMScheduler(num_train_timesteps=100, beta_schedule="linear")
+        theirs = DiffusersDDPM(num_train_timesteps=100, beta_schedule="linear")
         np.testing.assert_allclose(
             np.array(ours.alphas_cumprod),
             theirs.alphas_cumprod.numpy(),
@@ -302,30 +292,21 @@ class TestCrossFrameworkDDPM:
         from diffusers import DDPMScheduler as DiffusersDDPM
 
         T = 100
-        ours = DDPMScheduler(
-            num_train_timesteps=T, beta_schedule="squaredcos_cap_v2"
-        )
-        theirs = DiffusersDDPM(
-            num_train_timesteps=T, beta_schedule="squaredcos_cap_v2"
-        )
+        ours = DDPMScheduler(num_train_timesteps=T, beta_schedule="squaredcos_cap_v2")
+        theirs = DiffusersDDPM(num_train_timesteps=T, beta_schedule="squaredcos_cap_v2")
 
         np_x0 = np.random.randn(4, 16, 2).astype(np.float32)
         np_noise = np.random.randn(4, 16, 2).astype(np.float32)
         np_t = np.array([0, 25, 50, 99], dtype=np.int64)
 
-        mx_xt = ours.add_noise(
-            mx.array(np_x0), mx.array(np_noise), mx.array(np_t)
-        )
+        mx_xt = ours.add_noise(mx.array(np_x0), mx.array(np_noise), mx.array(np_t))
         th_xt = theirs.add_noise(
             torch.tensor(np_x0),
             torch.tensor(np_noise),
             torch.tensor(np_t),
         )
 
-        np.testing.assert_allclose(
-            np.array(mx_xt), th_xt.numpy(), atol=1e-5
-        )
-
+        np.testing.assert_allclose(np.array(mx_xt), th_xt.numpy(), atol=1e-5)
 
     @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
     def test_ddpm_step_matches_diffusers(self):
@@ -352,8 +333,6 @@ class TestCrossFrameworkDDPM:
         np.random.seed(42)
         np_sample = np.random.randn(2, 8, 2).astype(np.float32)
         np_model_out = np.random.randn(2, 8, 2).astype(np.float32)
-        t = 50
-
         # Use deterministic step (t=0 has no noise)
         # For t>0, we can't compare due to random noise.
         # Instead compare the predicted x0 and posterior mean by testing at t=0.
@@ -372,12 +351,8 @@ class TestCrossFrameworkDDIM:
     def test_alphas_match_diffusers(self):
         from diffusers import DDIMScheduler as DiffusersDDIM
 
-        ours = DDIMScheduler(
-            num_train_timesteps=100, beta_schedule="squaredcos_cap_v2"
-        )
-        theirs = DiffusersDDIM(
-            num_train_timesteps=100, beta_schedule="squaredcos_cap_v2"
-        )
+        ours = DDIMScheduler(num_train_timesteps=100, beta_schedule="squaredcos_cap_v2")
+        theirs = DiffusersDDIM(num_train_timesteps=100, beta_schedule="squaredcos_cap_v2")
         np.testing.assert_allclose(
             np.array(ours.alphas_cumprod),
             theirs.alphas_cumprod.numpy(),

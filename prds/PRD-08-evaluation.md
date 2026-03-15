@@ -1,6 +1,6 @@
 # PRD-08: End-to-End Evaluation
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** PRD-05 (Policy), PRD-06 (Training), PRD-07 (Dataset)
 **Blocks:** Nothing (final PRD)
 

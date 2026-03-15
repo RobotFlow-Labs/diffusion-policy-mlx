@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.utils
-import numpy as np
 
 
 def save_checkpoint(
@@ -190,8 +189,13 @@ class TopKCheckpointManager:
         meta = extra_metadata or {}
         meta["topk_metric"] = metric
         ckpt_path = save_checkpoint(
-            policy, ema, optimizer, epoch, step,
-            str(self.save_dir), extra_metadata=meta,
+            policy,
+            ema,
+            optimizer,
+            epoch,
+            step,
+            str(self.save_dir),
+            extra_metadata=meta,
         )
 
         # Insert and sort

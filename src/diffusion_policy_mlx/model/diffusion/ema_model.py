@@ -90,8 +90,7 @@ class EMAModel:
         for key in self.averaged_params:
             if key in model_params:
                 self.averaged_params[key] = (
-                    decay * self.averaged_params[key]
-                    + (1.0 - decay) * model_params[key]
+                    decay * self.averaged_params[key] + (1.0 - decay) * model_params[key]
                 )
 
         # Materialize the updated EMA arrays
