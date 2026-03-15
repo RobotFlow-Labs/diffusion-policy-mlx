@@ -3,7 +3,8 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![MLX](https://img.shields.io/badge/MLX-%E2%89%A50.22-orange.svg)](https://github.com/ml-explore/mlx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-323%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-472%20passing-brightgreen.svg)](#testing)
+[![Metal GPU](https://img.shields.io/badge/Metal%20GPU-verified-blueviolet.svg)](#metal-gpu-acceleration)
 
 The first native Apple Silicon implementation of [Diffusion Policy](https://github.com/real-stanford/diffusion_policy) (Chi et al., RSS 2023 Best Paper) built on [Apple MLX](https://github.com/ml-explore/mlx). Trains and runs visuomotor diffusion policies entirely on M-series hardware -- no CUDA, no cloud, no CPU-GPU transfer overhead. Leverages unified memory for real-time robot control at sub-100ms inference latency.
 
@@ -15,6 +16,7 @@ The first native Apple Silicon implementation of [Diffusion Policy](https://gith
 - [Architecture](#architecture)
 - [Build Order](#build-order)
 - [Quick Start](#quick-start)
+- [Metal GPU Acceleration](#metal-gpu-acceleration)
 - [Examples](#examples)
 - [Performance](#performance)
 - [MLX vs PyTorch+CUDA](#mlx-vs-pytorchcuda-for-robotics)
@@ -161,6 +163,37 @@ See [`prds/`](prds/) for detailed specifications of each phase.
 
 ---
 
+## Metal GPU Acceleration
+
+All computation runs on Apple Metal GPU by default. The codebase is verified to have zero CPU fallbacks in hot paths.
+
+```
+Device:        gpu (Metal)
+Active memory: dynamically allocated from unified pool
+Peak memory:   ~2.1 GB (full policy inference)
+mx.eval():     placed at every critical sync point
+```
+
+**Key design decisions for Metal performance:**
+
+- **`mx.eval()` after every denoising loop** -- without this, MLX's lazy evaluation builds an unbounded computation graph across all diffusion steps, causing memory to grow linearly with step count. All 6 policy variants have this guard.
+- **`mx.eval()` after optimizer step** -- materializes updated parameters and optimizer state, preventing graph accumulation during training.
+- **No CPU-forcing operations in forward/backward paths** -- `.item()`, `.numpy()`, `float()` are used only for logging after `mx.eval()`, never inside the compute graph.
+- **`mx.compile()` evaluated and rejected** -- benchmarked at 0.97x (no benefit). MLX already fuses Metal kernels internally; the UNet's varied control flow prevents compile from helping.
+- **Bounded observation history** -- `deque(maxlen=n_obs_steps)` prevents memory growth during long evaluation episodes.
+
+```python
+# Verify Metal is active on your system:
+from diffusion_policy_mlx.common.metal_utils import print_metal_status
+print_metal_status()
+# Device: Device(gpu, 0)
+# Metal: available
+# Active memory: 0.15 GB
+# Peak memory: 2.10 GB
+```
+
+---
+
 ## Training Data Flow
 
 ```mermaid
@@ -232,38 +265,44 @@ mindmap
     root((diffusion_policy_mlx))
         compat
             tensor_ops
-            nn_modules
             nn_layers
             functional
-            vision
+            vision / ResNet
             schedulers
-            einops_mlx
         model
             diffusion
                 conditional_unet1d
+                transformer_for_diffusion
                 conv1d_components
-                positional_embedding
                 ema_model
-                mask_generator
             vision
-                model_getter
                 multi_image_obs_encoder
                 crop_randomizer
             common
                 normalizer
                 lr_scheduler
         policy
-            base_image_policy
-            diffusion_unet_hybrid_image_policy
+            unet_hybrid_image
+            unet_lowdim
+            unet_image
+            transformer_hybrid
+            transformer_lowdim
         training
             train_diffusion
-            train_config
             checkpoint
-            collate
+            validator
+            wandb_logger
         dataset
-            base_dataset
-            pusht_image_dataset
+            pusht_image
+            pusht_lowdim
             replay_buffer
+        env
+            pusht_env
+            pusht_image_runner
+        common
+            dict_util
+            json_logger
+            metal_utils
 ```
 
 ---
@@ -298,9 +337,9 @@ pytest tests/ -v --tb=short
 
 # Expected output:
 # ========================= test session starts ==========================
-# collected 323 items
+# collected 472 items
 # ...
-# ========================= 323 passed in XXs ==============================
+# ========================= 472 passed in ~9s ==============================
 ```
 
 ### Train on PushT
@@ -342,14 +381,25 @@ python scripts/convert_weights.py \
 
 ## Examples
 
-The [`examples/`](examples/) directory contains standalone scripts demonstrating common use cases:
+The [`examples/`](examples/) directory contains 6 standalone, tested scripts. Each runs in under 10 seconds with no data download required:
 
-- **Inference from checkpoint** -- load a trained model and generate actions from observations
-- **Custom dataset integration** -- adapt the pipeline to your own robot data
-- **Weight conversion walkthrough** -- step-by-step PyTorch-to-MLX conversion
-- **Benchmarking** -- measure inference latency on your hardware
+```bash
+python examples/01_quickstart.py          # Create a policy, run inference (~2s)
+python examples/02_noise_visualization.py  # Visualize forward/reverse diffusion
+python examples/03_train_synthetic.py      # Full training loop on synthetic data
+python examples/04_scheduler_comparison.py # DDPM vs DDIM speed/quality tradeoff
+python examples/05_weight_conversion.py    # Convert PyTorch weights to MLX
+python examples/06_resnet_features.py      # Extract visual features with ResNet
+```
 
-Each example is self-contained and includes inline documentation.
+| Example | What it demonstrates | Runtime |
+|---------|---------------------|---------|
+| `01_quickstart.py` | Create policy, generate actions from random observations | ~2s |
+| `02_noise_visualization.py` | Forward diffusion (clean to noisy) and reverse denoising | ~3s |
+| `03_train_synthetic.py` | 50-step training loop with loss decrease verification | ~5s |
+| `04_scheduler_comparison.py` | DDPM (100 steps) vs DDIM (10 steps) speed comparison | ~5s |
+| `05_weight_conversion.py` | PyTorch ResNet18 weights to MLX with numerical verification | ~3s |
+| `06_resnet_features.py` | 512-dim feature extraction through vision encoder pipeline | ~2s |
 
 ---
 
@@ -418,24 +468,39 @@ diffusion-policy-mlx/
         lr_scheduler.py         #   Cosine and linear warmup schedulers
     policy/
       base_image_policy.py      # Abstract base with predict_action()
-      diffusion_unet_hybrid_image_policy.py  # Main policy (vision + UNet)
+      base_lowdim_policy.py     # Abstract base for low-dim observations
+      diffusion_unet_hybrid_image_policy.py   # Vision + UNet (primary)
+      diffusion_unet_image_policy.py          # Image-only UNet
+      diffusion_unet_lowdim_policy.py         # Low-dim UNet
+      diffusion_transformer_hybrid_image_policy.py  # Vision + Transformer
+      diffusion_transformer_lowdim_policy.py        # Low-dim Transformer
     training/
       train_diffusion.py        # MLX-native training loop
       train_config.py           # TrainConfig dataclass with YAML support
       checkpoint.py             # TopK checkpoint management
+      validator.py              # Validation loop + early stopping
+      wandb_logger.py           # Optional W&B integration
       collate.py                # Batch collation for mx.array
     dataset/
-      base_dataset.py           # Base dataset class
       pusht_image_dataset.py    # PushT zarr-backed image dataset
+      pusht_lowdim_dataset.py   # PushT low-dim dataset
       replay_buffer.py          # Replay buffer utilities
-  tests/                        # 323 tests (cross-framework validation)
+    env/
+      pusht_env.py              # PushT environment (pymunk + numpy fallback)
+      pusht_image_runner.py     # Evaluation runner with action queuing
+    common/
+      dict_util.py              # Nested dict manipulation
+      json_logger.py            # JSONL training metrics
+      metal_utils.py            # Metal GPU monitoring
+      pytorch_util.py           # MLX equivalents of upstream utils
+  tests/                        # 472 tests (cross-framework + numerical + integration)
   scripts/
-    convert_weights.py          # PyTorch checkpoint -> MLX safetensors
-    download_pusht.py           # Download PushT dataset
-    eval_pusht.py               # PushT evaluation loop
+    convert_weights.py          # PyTorch checkpoint -> MLX (safe loading)
+    download_pusht.py           # Download PushT dataset (SHA-256 verified)
+    eval_pusht.py               # PushT evaluation with real env
     benchmark.py                # Inference latency benchmarks
-  examples/                     # Standalone usage examples
-  configs/                      # Training configuration files
+  examples/                     # 6 standalone runnable examples
+  configs/                      # 3 training configuration files (CNN, Transformer, LowDim)
   prds/                         # PRD documents (build plan)
   repositories/
     diffusion-policy-upstream/  # Read-only upstream reference
@@ -447,7 +512,7 @@ diffusion-policy-mlx/
 
 ### Testing
 
-The test suite includes 323 tests covering cross-framework numerical validation, component unit tests, integration tests, and benchmarks.
+The test suite includes 472 tests covering cross-framework numerical validation against PyTorch and HuggingFace diffusers, NaN/Inf stability checks, end-to-end integration tests, Metal GPU verification, and benchmarks.
 
 ```bash
 # Full suite
