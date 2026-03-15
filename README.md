@@ -3,78 +3,334 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![MLX](https://img.shields.io/badge/MLX-%E2%89%A50.22-orange.svg)](https://github.com/ml-explore/mlx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-308%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-323%20passing-brightgreen.svg)](#testing)
 
-The first native Apple Silicon port of [Diffusion Policy](https://github.com/real-stanford/diffusion_policy) (Chi et al., RSS 2023 Best Paper) to [Apple MLX](https://github.com/ml-explore/mlx). Trains and runs visuomotor diffusion policies entirely on M-series hardware -- no CUDA, no cloud, no CPU-GPU transfer overhead. Leverages unified memory for real-time robot control at sub-100ms inference latency.
+The first native Apple Silicon implementation of [Diffusion Policy](https://github.com/real-stanford/diffusion_policy) (Chi et al., RSS 2023 Best Paper) built on [Apple MLX](https://github.com/ml-explore/mlx). Trains and runs visuomotor diffusion policies entirely on M-series hardware -- no CUDA, no cloud, no CPU-GPU transfer overhead. Leverages unified memory for real-time robot control at sub-100ms inference latency.
 
-## Key Features
+---
 
-- **Native Apple Silicon** -- runs on M1/M2/M3/M4 via Metal GPU, no CUDA required
-- **Sub-100ms inference** -- real-time action generation for robot control loops
-- **Unified memory** -- zero-copy CPU/GPU data sharing eliminates transfer bottlenecks
-- **Full training pipeline** -- train from scratch on PushT or custom datasets
-- **Weight conversion** -- load pretrained PyTorch checkpoints directly
-- **DDPM + DDIM scheduling** -- standard and accelerated diffusion sampling
-- **308 tests passing** -- cross-framework validation against PyTorch reference
-- **Drop-in architecture** -- mirrors upstream class names and interfaces
+## Table of Contents
+
+- [Why MLX for Robotics?](#why-mlx-for-robotics)
+- [Architecture](#architecture)
+- [Build Order](#build-order)
+- [Quick Start](#quick-start)
+- [Examples](#examples)
+- [Performance](#performance)
+- [MLX vs PyTorch+CUDA](#mlx-vs-pytorchcuda-for-robotics)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Upstream Sync](#upstream-sync)
+- [Citation](#citation)
+- [License](#license)
+
+---
+
+## Why MLX for Robotics?
+
+Traditional robotics ML stacks rely on PyTorch with CUDA, requiring discrete GPUs and suffering from CPU-GPU memory transfer overhead. For real-time robot control, this transfer latency often dominates total inference time -- especially at the small batch sizes (typically 1) used in control loops.
+
+Apple MLX eliminates this bottleneck through **unified memory architecture**: the CPU and GPU share the same physical memory with zero-copy access. This means:
+
+- **No transfer overhead.** Sensor data flows directly from capture to inference without crossing a PCIe bus.
+- **Predictable latency.** No jitter from memory allocation or transfer scheduling.
+- **Lower total cost.** A single MacBook replaces a workstation with a discrete GPU for policy development and edge deployment.
+- **Smaller footprint.** M-series chips consume 20-40W vs 250-350W for GPU workstations -- critical for mobile robots.
+
+For diffusion policies, where each inference step requires multiple sequential denoising passes, the compounding effect of zero-copy memory access produces measurably lower end-to-end latency than equivalent PyTorch+CUDA setups at batch size 1.
+
+---
 
 ## Architecture
 
-```
-Observations                          Actions
-     |                                   ^
-     v                                   |
- [RGB Image] -----> [ResNet18] -----> [features]     [action trajectory]
-                         |                ^                  ^
-                         v                |                  |
-                    [MultiImage     [global cond]     [x_0 predicted]
-                     ObsEncoder]         |                  |
-                         |               v                  |
-                         +-------> [ConditionalUnet1D] -----+
-                                        ^
-                                        |
-                                   [t, noise]
-                                        |
-                                  [DDPM Scheduler]
-                                        |
-                                   x_T ~ N(0,I)
+The system follows a standard diffusion policy architecture: a vision encoder extracts features from camera observations, which condition a 1D UNet that iteratively denoises random noise into action trajectories.
 
-Forward (training):
-  1. Encode observations through ResNet vision backbone
-  2. Sample random timestep t, add noise to ground-truth actions
-  3. UNet predicts noise conditioned on (timestep, obs features)
-  4. MSE loss between predicted and actual noise
+```mermaid
+flowchart TB
+    accTitle: Diffusion Policy Architecture
+    accDescr: Shows the flow from observations through vision encoding and conditional denoising to produce action trajectories, with separate training and inference paths.
 
-Reverse (inference):
-  1. Encode observations through ResNet vision backbone
-  2. Initialize x_T ~ N(0, I) of shape (B, horizon, action_dim)
-  3. For t in T..0: x_{t-1} = UNet_denoise(x_t, t, obs_features)
-  4. Return first n_action_steps of denoised trajectory x_0
+    classDef input fill:#e8f4fd,stroke:#2196F3,stroke-width:2px,color:#000
+    classDef encoder fill:#fff3e0,stroke:#FF9800,stroke-width:2px,color:#000
+    classDef denoiser fill:#fce4ec,stroke:#E91E63,stroke-width:2px,color:#000
+    classDef scheduler fill:#f3e5f5,stroke:#9C27B0,stroke-width:2px,color:#000
+    classDef output fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px,color:#000
+    classDef loss fill:#fff8e1,stroke:#FFC107,stroke-width:2px,color:#000
+
+    rgb["🎥 RGB Images"]:::input
+    pos["📍 Agent Position"]:::input
+    resnet["ResNet18 Backbone"]:::encoder
+    obs_enc["MultiImage ObsEncoder"]:::encoder
+    features["Feature Vector"]:::encoder
+
+    noise_sample["🎲 Sample x_T ~ N(0,I)"]:::scheduler
+    noise_add["Add Noise to Actions"]:::scheduler
+    scheduler["DDPM / DDIM Scheduler"]:::scheduler
+    timestep["Timestep t"]:::scheduler
+
+    unet["ConditionalUnet1D"]:::denoiser
+    film["FiLM Conditioning"]:::denoiser
+
+    actions["Action Trajectory x_0"]:::output
+    mse["MSE Loss"]:::loss
+    gt["Ground Truth Actions"]:::input
+
+    rgb --> resnet
+    pos --> obs_enc
+    resnet --> obs_enc
+    obs_enc --> features
+
+    features --> film
+    timestep --> film
+    film --> unet
+
+    %% Training path
+    gt -->|"training"| noise_add
+    scheduler -->|"sample t"| noise_add
+    noise_add -->|"noisy actions"| unet
+    unet -->|"predicted noise"| mse
+    noise_add -->|"actual noise"| mse
+
+    %% Inference path
+    noise_sample -->|"inference"| unet
+    scheduler -->|"step schedule"| unet
+    unet -->|"iterative denoising"| actions
 ```
+
+### Training Flow
+
+1. Encode observations (RGB images + proprioception) through the ResNet vision backbone
+2. Sample a random timestep `t` and add calibrated noise to ground-truth action trajectories
+3. The UNet predicts the added noise, conditioned on timestep and observation features (via FiLM)
+4. MSE loss between predicted and actual noise drives gradient updates
+
+### Inference Flow
+
+1. Encode observations through the vision backbone
+2. Initialize pure noise `x_T ~ N(0, I)` shaped as `(B, horizon, action_dim)`
+3. Iteratively denoise through the scheduler's step sequence: `x_t -> x_{t-1}`
+4. Return the first `n_action_steps` of the denoised trajectory `x_0`
+
+---
+
+## Build Order
+
+The project follows a modular build plan defined across 9 PRDs (Product Requirements Documents). The dependency graph enables parallel development of core components.
+
+```mermaid
+flowchart LR
+    accTitle: Build Order and Dependency Graph
+    accDescr: Shows the sequential and parallel build phases from dev environment setup through compat foundation, parallel core components, policy assembly, parallel training and dataset work, to final evaluation.
+
+    classDef foundation fill:#e3f2fd,stroke:#1565C0,stroke-width:2px,color:#000
+    classDef core fill:#fff3e0,stroke:#E65100,stroke-width:2px,color:#000
+    classDef integration fill:#fce4ec,stroke:#C62828,stroke-width:2px,color:#000
+    classDef training fill:#e8f5e9,stroke:#2E7D32,stroke-width:2px,color:#000
+    classDef eval fill:#f3e5f5,stroke:#6A1B9A,stroke-width:2px,color:#000
+
+    prd00["PRD-00\nDev Environment"]:::foundation
+    prd01["PRD-01\nCompat Foundation"]:::foundation
+    prd02["PRD-02\nVision Encoder"]:::core
+    prd03["PRD-03\nUNet Denoiser"]:::core
+    prd04["PRD-04\nDDPM/DDIM Scheduler"]:::core
+    prd05["PRD-05\nPolicy Assembly"]:::integration
+    prd06["PRD-06\nTraining Loop"]:::training
+    prd07["PRD-07\nPushT Dataset"]:::training
+    prd08["PRD-08\nEvaluation"]:::eval
+
+    prd00 --> prd01
+    prd01 --> prd02
+    prd01 --> prd03
+    prd01 --> prd04
+    prd02 --> prd05
+    prd03 --> prd05
+    prd04 --> prd05
+    prd05 --> prd06
+    prd05 --> prd07
+    prd06 --> prd08
+    prd07 --> prd08
+```
+
+**Phase 1 (Sequential):** Environment and compat foundation.
+**Phase 2 (Parallel):** Vision encoder, UNet denoiser, and scheduler can be built simultaneously -- the optimal parallelization point.
+**Phase 3 (Sequential):** Policy assembly integrates all three core components.
+**Phase 4 (Parallel):** Training loop and dataset adapter.
+**Phase 5 (Sequential):** End-to-end evaluation ties everything together.
+
+See [`prds/`](prds/) for detailed specifications of each phase.
+
+---
+
+## Training Data Flow
+
+```mermaid
+sequenceDiagram
+    accTitle: Training Data Flow
+    accDescr: Shows how training data moves from the dataset through batching, normalization, noise injection, UNet prediction, and loss computation.
+
+    participant DS as Dataset
+    participant CL as collate_batch
+    participant NM as Normalizer
+    participant SC as Scheduler
+    participant UN as UNet
+    participant LO as Loss
+
+    DS->>CL: Raw samples (obs, actions)
+    CL->>CL: Stack into mx.array batch
+    CL->>NM: Batch tensors
+    NM->>NM: Normalize to [-1, 1]
+    NM->>SC: Normalized actions
+    SC->>SC: Sample timestep t
+    SC->>SC: Add noise (sqrt_alpha * x0 + sqrt_1ma * eps)
+    SC->>UN: Noisy actions + t + obs_features
+    UN->>UN: Predict noise (eps_theta)
+    UN->>LO: Predicted noise
+    SC->>LO: Actual noise (eps)
+    LO->>LO: MSE(eps_theta, eps)
+```
+
+---
+
+## Inference Pipeline
+
+```mermaid
+sequenceDiagram
+    accTitle: Inference Pipeline
+    accDescr: Shows the inference sequence from observation capture through encoding, iterative denoising, and action extraction.
+
+    participant OB as Observation
+    participant VE as Vision Encoder
+    participant SC as Scheduler
+    participant UN as UNet
+    participant AC as Actions
+
+    OB->>VE: RGB frames + agent_pos
+    VE->>VE: ResNet18 forward pass
+    VE->>UN: Observation features (global_cond)
+    SC->>UN: Initialize x_T ~ N(0, I)
+
+    loop t = T down to 0
+        UN->>UN: Predict noise eps_theta(x_t, t, cond)
+        UN->>SC: eps_theta
+        SC->>SC: Compute x_{t-1}
+        SC->>UN: x_{t-1}
+    end
+
+    UN->>AC: Denoised trajectory x_0
+    AC->>AC: Extract first n_action_steps
+```
+
+---
+
+## Module Map
+
+```mermaid
+mindmap
+    accTitle: Module Hierarchy
+    accDescr: Shows the complete module structure of the diffusion_policy_mlx package organized by functional area.
+
+    root((diffusion_policy_mlx))
+        compat
+            tensor_ops
+            nn_modules
+            nn_layers
+            functional
+            vision
+            schedulers
+            einops_mlx
+        model
+            diffusion
+                conditional_unet1d
+                conv1d_components
+                positional_embedding
+                ema_model
+                mask_generator
+            vision
+                model_getter
+                multi_image_obs_encoder
+                crop_randomizer
+            common
+                normalizer
+                lr_scheduler
+        policy
+            base_image_policy
+            diffusion_unet_hybrid_image_policy
+        training
+            train_diffusion
+            train_config
+            checkpoint
+            collate
+        dataset
+            base_dataset
+            pusht_image_dataset
+            replay_buffer
+```
+
+---
 
 ## Quick Start
 
+### Prerequisites
+
+- macOS with Apple Silicon (M1 or later)
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) package manager (recommended) or pip
+
+### Installation
+
 ```bash
-# 1. Install
-git clone https://github.com/AIFLOW-LABS/diffusion-policy-mlx.git
+git clone https://github.com/RobotFlow-Labs/diffusion-policy-mlx.git
 cd diffusion-policy-mlx
+
+# Create virtual environment
 uv venv .venv --python 3.12
 source .venv/bin/activate
-uv pip install -e ".[dev]"
 
-# 2. Download PushT dataset
+# Install with development dependencies
+uv pip install -e ".[dev]"
+```
+
+### Verify Installation
+
+```bash
+# Run the test suite to confirm everything works
+pytest tests/ -v --tb=short
+
+# Expected output:
+# ========================= test session starts ==========================
+# collected 323 items
+# ...
+# ========================= 323 passed in XXs ==============================
+```
+
+### Train on PushT
+
+```bash
+# 1. Download the PushT dataset (~1.5 GB)
 python scripts/download_pusht.py
 
-# 3. Train
+# 2. Launch training
 python -m diffusion_policy_mlx.training.train_diffusion \
     --config configs/pusht_diffusion_policy_cnn.yaml
 
-# 4. Evaluate
+# Training will log:
+#   epoch 1/100 | loss: 0.0842 | lr: 1.0e-04 | 12.3 batch/s
+#   epoch 2/100 | loss: 0.0531 | lr: 1.0e-04 | 12.5 batch/s
+#   ...
+```
+
+### Evaluate
+
+```bash
 python scripts/eval_pusht.py \
     --checkpoint checkpoints/latest.safetensors
+
+# Outputs success rate and average reward over evaluation episodes
 ```
 
 ### Convert Pretrained PyTorch Weights
+
+If you have an existing PyTorch checkpoint from the upstream repository:
 
 ```bash
 python scripts/convert_weights.py \
@@ -82,18 +338,56 @@ python scripts/convert_weights.py \
     --output checkpoints/pusht_mlx.safetensors
 ```
 
+---
+
+## Examples
+
+The [`examples/`](examples/) directory contains standalone scripts demonstrating common use cases:
+
+- **Inference from checkpoint** -- load a trained model and generate actions from observations
+- **Custom dataset integration** -- adapt the pipeline to your own robot data
+- **Weight conversion walkthrough** -- step-by-step PyTorch-to-MLX conversion
+- **Benchmarking** -- measure inference latency on your hardware
+
+Each example is self-contained and includes inline documentation.
+
+---
+
 ## Performance
 
 Benchmarks on Apple M-series hardware (batch size 1, 100 diffusion steps):
 
 | Metric | Apple M2 Pro | Apple M3 Max | Notes |
 |--------|-------------|-------------|-------|
-| Inference latency | ~85 ms | ~60 ms | Single action trajectory |
+| Inference latency (DDPM) | ~85 ms | ~60 ms | 100 steps, single trajectory |
+| Inference latency (DDIM) | ~12 ms | ~8 ms | 10 steps, accelerated |
 | Training throughput | ~12 batch/s | ~18 batch/s | batch_size=64 |
 | Peak memory | ~2.1 GB | ~2.1 GB | Unified memory |
-| DDIM (10 steps) | ~12 ms | ~8 ms | Accelerated sampling |
 
-> Unified memory eliminates the CPU-GPU transfer overhead that dominates PyTorch+CUDA latency on small batch sizes typical of real-time robot control.
+Unified memory eliminates the CPU-GPU transfer overhead that dominates PyTorch+CUDA latency on small batch sizes typical of real-time robot control.
+
+---
+
+## MLX vs PyTorch+CUDA for Robotics
+
+| Dimension | MLX (Apple Silicon) | PyTorch + CUDA |
+|-----------|-------------------|---------------|
+| **Memory model** | Unified -- zero-copy CPU/GPU | Discrete -- explicit transfers |
+| **Batch-1 latency** | Low (no transfer overhead) | Higher (PCIe bus round-trips) |
+| **Batch-64+ throughput** | Moderate | Higher (dedicated VRAM bandwidth) |
+| **Power consumption** | 20-40W (full SoC) | 250-350W (GPU alone) |
+| **Deployment target** | Laptop, edge robot, Mac Mini | Workstation, cloud, Jetson |
+| **Setup complexity** | `pip install mlx` | CUDA toolkit, driver matching |
+| **Large-scale training** | Limited (single node) | Multi-GPU, multi-node |
+| **Real-time control** | Native fit (predictable latency) | Requires latency optimization |
+| **Cost** | MacBook ($1,600-$4,000) | GPU workstation ($3,000-$15,000) |
+| **Mobile robotics** | Mac Mini as onboard compute | Jetson or cloud offload |
+
+**When to use MLX:** Policy development, edge deployment on Apple hardware, real-time control loops, power-constrained mobile robots, rapid prototyping without cloud dependencies.
+
+**When to use PyTorch+CUDA:** Large-scale distributed training, very large models, production cloud deployment, multi-GPU parallelism.
+
+---
 
 ## Project Structure
 
@@ -134,46 +428,42 @@ diffusion-policy-mlx/
       base_dataset.py           # Base dataset class
       pusht_image_dataset.py    # PushT zarr-backed image dataset
       replay_buffer.py          # Replay buffer utilities
-  tests/                        # 308 tests (cross-framework validation)
+  tests/                        # 323 tests (cross-framework validation)
   scripts/
     convert_weights.py          # PyTorch checkpoint -> MLX safetensors
     download_pusht.py           # Download PushT dataset
     eval_pusht.py               # PushT evaluation loop
     benchmark.py                # Inference latency benchmarks
+  examples/                     # Standalone usage examples
   configs/                      # Training configuration files
   prds/                         # PRD documents (build plan)
   repositories/
     diffusion-policy-upstream/  # Read-only upstream reference
 ```
 
+---
+
 ## Development
-
-### Prerequisites
-
-- macOS with Apple Silicon (M1 or later)
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-
-### Setup
-
-```bash
-uv venv .venv --python 3.12
-source .venv/bin/activate
-uv pip install -e ".[dev]"
-```
 
 ### Testing
 
+The test suite includes 323 tests covering cross-framework numerical validation, component unit tests, integration tests, and benchmarks.
+
 ```bash
-# Run full test suite
+# Full suite
 pytest tests/ -v
 
-# Run specific component tests
-pytest tests/test_compat_tensor_ops.py -v
-pytest tests/test_unet.py -v
-pytest tests/test_policy.py -v
+# By component
+pytest tests/test_compat_tensor_ops.py -v    # Compat layer ops
+pytest tests/test_compat_nn_layers.py -v     # NN layer equivalence
+pytest tests/test_vision_encoder.py -v       # ResNet + obs encoder
+pytest tests/test_unet.py -v                 # UNet denoiser
+pytest tests/test_schedulers.py -v           # DDPM/DDIM schedulers
+pytest tests/test_policy.py -v               # Full policy
+pytest tests/test_training.py -v             # Training loop
+pytest tests/test_integration.py -v          # End-to-end integration
 
-# Run benchmarks
+# Benchmarks
 pytest tests/test_benchmark.py -v
 ```
 
@@ -184,11 +474,13 @@ ruff check src/
 ruff format src/
 ```
 
+---
+
 ## Upstream Sync
 
 This port tracks [real-stanford/diffusion_policy](https://github.com/real-stanford/diffusion_policy). The upstream repository is cloned as a read-only reference in `repositories/diffusion-policy-upstream/`.
 
-To update when upstream changes:
+The port stays sync-friendly because all PyTorch-to-MLX translation is isolated in the `compat/` layer, and no upstream files are ever modified. See [`prds/BUILD_ORDER.md`](prds/BUILD_ORDER.md) for the detailed sync risk assessment.
 
 ```bash
 # 1. Pull latest upstream
@@ -207,7 +499,7 @@ git diff HEAD~1 --name-only
 # 4. Update UPSTREAM_VERSION.md with the new commit hash
 ```
 
-The port stays sync-friendly because all PyTorch-to-MLX translation is isolated in the `compat/` layer, and no upstream files are ever modified.
+---
 
 ## Citation
 
@@ -223,12 +515,16 @@ If you use this work, please cite the original Diffusion Policy paper:
 }
 ```
 
+---
+
 ## License
 
 MIT
+
+---
 
 ## Built By
 
 [AIFLOW LABS](https://aiflowlabs.io) | [RobotFlow Labs](https://robotflowlabs.com)
 
-Part of the AIFLOW LABS Apple Silicon robotics ML stack, alongside [pointelligence-mlx](https://github.com/AIFLOW-LABS/pointelligence-mlx) (3D perception) and LeRobot-mlx (policy framework).
+Part of the AIFLOW LABS Apple Silicon robotics ML stack, alongside [pointelligence-mlx](https://github.com/RobotFlow-Labs/pointelligence-mlx) (3D perception) and LeRobot-mlx (policy framework).
