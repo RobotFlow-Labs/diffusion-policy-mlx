@@ -101,6 +101,7 @@ class MultiImageObsEncoder(nn.Module):
                             max(1, m.num_features // 16) if hasattr(m, "num_features") else 4
                         ),
                         dims=m.num_features if hasattr(m, "num_features") else m.weight.shape[0],
+                        pytorch_compatible=True,
                     ),
                 )
             self.key_model_map["rgb"] = rgb_model
@@ -141,6 +142,7 @@ class MultiImageObsEncoder(nn.Module):
                                     if hasattr(m, "num_features")
                                     else m.weight.shape[0]
                                 ),
+                                pytorch_compatible=True,
                             ),
                         )
                     self.key_model_map[key] = this_model

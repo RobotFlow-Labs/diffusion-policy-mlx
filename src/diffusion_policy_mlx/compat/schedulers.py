@@ -303,14 +303,15 @@ class DDIMScheduler:
         alpha_bar_t = self.alphas_cumprod[t]
         alpha_bar_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
 
-        # Predict x_0 and epsilon
+        # Predict x_0, clip, then derive epsilon from clipped x_0
         pred_x0 = _predict_x0(self.prediction_type, model_output, sample, alpha_bar_t)
-        pred_eps = _predict_epsilon(
-            self.prediction_type, model_output, sample, alpha_bar_t, pred_x0
-        )
 
         if self.clip_sample:
             pred_x0 = mx.clip(pred_x0, -self.clip_sample_range, self.clip_sample_range)
+
+        pred_eps = _predict_epsilon(
+            self.prediction_type, model_output, sample, alpha_bar_t, pred_x0
+        )
 
         # DDIM sigma — floor to prevent sqrt of negative from float rounding
         sigma_sq = (
