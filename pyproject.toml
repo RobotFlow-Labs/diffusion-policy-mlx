@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffusion-policy-mlx"
+version = "0.1.0"
+description = "Diffusion Policy for Apple Silicon via MLX"
+readme = "PROMPT.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "mlx>=0.22.0",
+    "numpy>=1.24.0",
+    "Pillow>=9.0.0",
+    "zarr>=2.12.0",
+    "h5py>=3.7.0",
+    "scipy>=1.10.0",
+    "safetensors>=0.4.0",
+    "tqdm>=4.60.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0",
+    "ruff>=0.4.0",
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "diffusers>=0.25.0",
+    "einops>=0.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
