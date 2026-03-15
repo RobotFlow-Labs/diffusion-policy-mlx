@@ -314,12 +314,13 @@ class DDIMScheduler:
         if self.clip_sample:
             pred_x0 = mx.clip(pred_x0, -self.clip_sample_range, self.clip_sample_range)
 
-        # DDIM sigma
-        sigma = eta * mx.sqrt(
+        # DDIM sigma — floor to prevent sqrt of negative from float rounding
+        sigma_sq = (
             (1.0 - alpha_bar_prev)
             / (1.0 - alpha_bar_t)
             * (1.0 - alpha_bar_t / alpha_bar_prev)
         )
+        sigma = eta * mx.sqrt(mx.maximum(sigma_sq, mx.array(0.0)))
 
         pred_direction = mx.sqrt(1.0 - alpha_bar_prev - sigma**2) * pred_eps
         prev_sample = mx.sqrt(alpha_bar_prev) * pred_x0 + pred_direction

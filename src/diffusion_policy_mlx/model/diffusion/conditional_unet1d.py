@@ -153,8 +153,18 @@ class ConditionalUnet1D(nn.Module):
         in_out = list(zip(all_dims[:-1], all_dims[1:]))
 
         # Local cond encoder (optional)
+        # WARNING: Due to a bug in the upstream implementation (line 233),
+        # the local_cond up-path contribution is dead code (the condition
+        # `idx == len(self.up_modules)` is always False). We preserve this
+        # for checkpoint compatibility. The down-path contribution at idx=0
+        # IS applied. See https://github.com/real-stanford/diffusion_policy
         self.local_cond_encoder: Optional[list] = None
         if local_cond_dim is not None:
+            logger.warning(
+                "local_cond_dim is set, but the up-path local conditioning "
+                "is dead code (upstream bug preserved for checkpoint compat). "
+                "Only the down-path contribution at idx=0 is applied."
+            )
             _, dim_out = in_out[0]
             dim_in = local_cond_dim
             self.local_cond_encoder = [

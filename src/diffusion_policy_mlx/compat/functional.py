@@ -14,8 +14,12 @@ import mlx.nn as nn
 # ---------------------------------------------------------------------------
 
 def mish(x: mx.array) -> mx.array:
-    """``F.mish`` activation:  x * tanh(softplus(x))."""
-    return x * mx.tanh(mx.log(1.0 + mx.exp(x)))
+    """``F.mish`` activation:  x * tanh(softplus(x)).
+
+    Uses thresholded softplus to avoid float32 overflow for x > ~88.
+    """
+    softplus = mx.where(x > 20.0, x, mx.log(1.0 + mx.exp(x)))
+    return x * mx.tanh(softplus)
 
 
 def silu(x: mx.array) -> mx.array:
