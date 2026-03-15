@@ -482,11 +482,14 @@ def convert_checkpoint(
 
     # Load PyTorch checkpoint
     logger.info("Loading checkpoint from %s", checkpoint_path)
-    ckpt = torch.load(
-        checkpoint_path,
-        map_location="cpu",
-        weights_only=False,
-    )
+    try:
+        ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    except Exception:
+        logger.warning(
+            "weights_only=True failed (checkpoint may contain non-tensor objects). "
+            "Falling back to weights_only=False -- only use this with TRUSTED checkpoints."
+        )
+        ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
     # Extract state dicts
     if "state_dicts" in ckpt:

@@ -53,8 +53,11 @@ class WandbLogger:
         except ImportError:
             # wandb not installed — degrade silently
             self._wandb = None
-        except Exception:
+        except Exception as exc:
             # wandb installed but init failed (e.g., no API key)
+            import logging
+
+            logging.getLogger(__name__).warning("wandb init failed, logging disabled: %s", exc)
             self._wandb = None
 
     @property

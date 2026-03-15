@@ -12,6 +12,7 @@ data server hosted at Columbia University.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -68,6 +69,13 @@ def download_pusht(output_dir: str = "data") -> str:
 
     print("Extracting...")
     with zipfile.ZipFile(str(zip_path), "r") as zf:
+        # Validate against path traversal (Zip Slip)
+        for member in zf.namelist():
+            member_path = os.path.realpath(os.path.join(str(output_path), member))
+            if not member_path.startswith(os.path.realpath(str(output_path))):
+                raise ValueError(
+                    f"Zip entry {member!r} would escape target directory — aborting"
+                )
         zf.extractall(str(output_path))
 
     # Clean up zip
