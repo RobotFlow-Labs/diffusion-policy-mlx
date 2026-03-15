@@ -9,7 +9,7 @@ using MLX's functional gradient API (``mlx.nn.value_and_grad``).
 from __future__ import annotations
 
 import time
-from typing import List
+from typing import Dict, List
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -17,6 +17,7 @@ import mlx.optimizers
 import mlx.utils
 import numpy as np
 
+from diffusion_policy_mlx.common.json_logger import JsonLogger
 from diffusion_policy_mlx.model.common.lr_scheduler import get_scheduler
 from diffusion_policy_mlx.model.diffusion.ema_model import EMAModel
 from diffusion_policy_mlx.training.checkpoint import (
@@ -25,6 +26,45 @@ from diffusion_policy_mlx.training.checkpoint import (
 )
 from diffusion_policy_mlx.training.collate import collate_batch  # noqa: F401
 from diffusion_policy_mlx.training.train_config import TrainConfig
+from diffusion_policy_mlx.training.wandb_logger import WandbLogger
+
+
+def clip_grad_norm(
+    grads: Dict,
+    max_norm: float,
+) -> Dict:
+    """Clip gradient norms to *max_norm* (global norm clipping).
+
+    Computes the global L2 norm across all gradient arrays and scales them
+    down if the norm exceeds *max_norm*.
+
+    Args:
+        grads: Nested dict of gradient arrays (from ``nn.value_and_grad``).
+        max_norm: Maximum allowed global norm.
+
+    Returns:
+        Clipped gradients with the same structure.
+    """
+    if max_norm <= 0:
+        return grads
+
+    # Flatten all gradient arrays
+    flat_grads = mlx.utils.tree_flatten(grads)
+
+    # Compute global norm
+    total_norm_sq = mx.array(0.0)
+    for _, g in flat_grads:
+        total_norm_sq = total_norm_sq + mx.sum(g * g)
+    total_norm = mx.sqrt(total_norm_sq)
+
+    # Compute clip coefficient: min(max_norm / total_norm, 1.0)
+    clip_coef = mx.minimum(mx.array(max_norm) / (total_norm + 1e-6), mx.array(1.0))
+
+    # Scale all gradients
+    clipped = [(k, v * clip_coef) for k, v in flat_grads]
+
+    # Unflatten back to nested dict
+    return mlx.utils.tree_unflatten(clipped)
 
 
 def train(config: TrainConfig) -> None:
@@ -34,7 +74,8 @@ def train(config: TrainConfig) -> None:
         1. Load dataset and build normalizer
         2. Build policy, optimizer, EMA, LR scheduler
         3. Training loop with value_and_grad
-        4. Periodic checkpointing and logging
+        4. Periodic checkpointing, validation, and logging
+        5. Optional gradient clipping and early stopping
 
     Args:
         config: Training configuration dataclass.
@@ -113,8 +154,19 @@ def train(config: TrainConfig) -> None:
     # 8. Checkpoint manager
     topk_manager = TopKCheckpointManager(save_dir=config.checkpoint_dir, k=config.top_k, mode="min")
 
-    # 9. Training loop
+    # 9. Loggers
+    json_logger = JsonLogger(config.json_log_path)
+    json_logger.start()
+
+    wandb_logger = WandbLogger(
+        project=config.wandb_project,
+        config=config.to_dict(),
+        enabled=config.use_wandb,
+    )
+
+    # 10. Training loop
     global_step = 0
+    epochs_without_improvement = 0
     print(
         f"Starting training: {config.num_epochs} epochs, "
         f"~{steps_per_epoch} steps/epoch, {total_steps} total steps"
@@ -140,6 +192,10 @@ def train(config: TrainConfig) -> None:
             # Forward + backward (MLX functional paradigm)
             loss, grads = loss_and_grad_fn(policy, batch)
 
+            # Gradient clipping
+            if config.max_grad_norm > 0:
+                grads = clip_grad_norm(grads, config.max_grad_norm)
+
             # Update parameters
             optimizer.update(policy, grads)
             mx.eval(policy.parameters(), optimizer.state)
@@ -157,15 +213,27 @@ def train(config: TrainConfig) -> None:
             # Logging
             if global_step % config.log_every_n_steps == 0:
                 lr_val = float(optimizer.learning_rate)
+                log_data = {
+                    "train_loss": loss_val,
+                    "lr": lr_val,
+                    "epoch": epoch,
+                }
                 print(
                     f"epoch {epoch:4d} | step {global_step:6d} | "
                     f"loss {loss_val:.6f} | lr {lr_val:.2e}"
                 )
+                json_logger.log(log_data, step=global_step)
+                wandb_logger.log(log_data, step=global_step)
 
         # End of epoch
         epoch_time = time.time() - epoch_start
         avg_loss = float(np.mean(epoch_losses)) if epoch_losses else 0.0
         print(f"Epoch {epoch:4d} done in {epoch_time:.1f}s | avg_loss {avg_loss:.6f}")
+
+        # Log epoch summary
+        epoch_log = {"epoch": epoch, "avg_train_loss": avg_loss, "epoch_time": epoch_time}
+        json_logger.log(epoch_log, step=global_step)
+        wandb_logger.log(epoch_log, step=global_step)
 
         # Periodic checkpoint
         if (epoch + 1) % config.save_every_n_epochs == 0:
@@ -188,6 +256,23 @@ def train(config: TrainConfig) -> None:
             step=global_step,
         )
 
+        # Early stopping check
+        if config.early_stopping_patience > 0:
+            best = topk_manager.best_metric
+            if best is not None and avg_loss > best + 1e-5:
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= config.early_stopping_patience:
+                    print(
+                        f"Early stopping at epoch {epoch} — no improvement "
+                        f"for {epochs_without_improvement} epochs."
+                    )
+                    break
+            else:
+                epochs_without_improvement = 0
+
+    # Cleanup
+    json_logger.stop()
+    wandb_logger.finish()
     print(f"Training complete. Total steps: {global_step}")
 
 

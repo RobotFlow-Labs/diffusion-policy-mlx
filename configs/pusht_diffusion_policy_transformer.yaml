@@ -1,0 +1,49 @@
+# PushT Diffusion Policy (Transformer variant) Configuration
+#
+# Uses the same UNet backbone but with transformer-friendly settings.
+# Used with: python -m diffusion_policy_mlx.training.train_diffusion --config configs/pusht_diffusion_policy_transformer.yaml
+
+# -- Data ------------------------------------------------------------------
+dataset_path: data/pusht_image.zarr
+horizon: 16
+n_obs_steps: 2
+n_action_steps: 8
+
+# -- Model -----------------------------------------------------------------
+# Smaller channel dims to offset transformer overhead
+down_dims: [256, 512, 1024]
+kernel_size: 5
+n_groups: 8
+diffusion_step_embed_dim: 256
+num_train_timesteps: 100
+num_inference_steps: 16  # fewer inference steps for speed
+crop_shape: [76, 76]
+
+# -- Training --------------------------------------------------------------
+batch_size: 64
+num_epochs: 300
+lr: 1.0e-4
+weight_decay: 1.0e-6
+lr_scheduler: cosine
+lr_warmup_steps: 500
+ema_power: 0.75
+seed: 42
+
+# -- Validation ------------------------------------------------------------
+val_every_n_epochs: 10
+n_val_batches: 10
+early_stopping_patience: 0  # disabled
+
+# -- Gradient clipping -----------------------------------------------------
+max_grad_norm: 1.0
+
+# -- Checkpointing ---------------------------------------------------------
+checkpoint_dir: checkpoints/pusht_transformer
+save_every_n_epochs: 50
+top_k: 5
+
+# -- Logging ---------------------------------------------------------------
+log_every_n_steps: 100
+json_log_path: logs/pusht_transformer_metrics.jsonl
+use_wandb: false
+wandb_project: diffusion-policy-mlx

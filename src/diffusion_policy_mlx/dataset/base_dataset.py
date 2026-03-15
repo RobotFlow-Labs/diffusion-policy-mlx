@@ -59,3 +59,63 @@ class _EmptyImageDataset(BaseImageDataset):
 
     def get_normalizer(self, mode: str = "limits", **kwargs):
         raise RuntimeError("Cannot fit normalizer on empty dataset")
+
+
+# ---------------------------------------------------------------------------
+# Low-dim base
+# ---------------------------------------------------------------------------
+
+
+class BaseLowdimDataset(ABC):
+    """Abstract base for low-dimensional observation datasets.
+
+    Similar to ``BaseImageDataset`` but ``__getitem__`` returns flat
+    observation vectors instead of image dicts::
+
+        {
+            'obs': (T, Do) float32,
+            'action': (T, Da) float32,
+        }
+    """
+
+    @abstractmethod
+    def __len__(self) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        """Return a single training sample.
+
+        Returns
+        -------
+        dict
+            ``obs``    -- (T, Do) float32 observation vector.
+            ``action`` -- (T, Da) float32 action vector.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_normalizer(self, mode: str = "limits", **kwargs):
+        """Return a normalizer fitted on this dataset."""
+        raise NotImplementedError
+
+    def get_validation_dataset(self) -> "BaseLowdimDataset":
+        """Return a validation split.  Default: empty dataset."""
+        return _EmptyLowdimDataset()
+
+    def get_all_actions(self) -> np.ndarray:
+        """Return all raw actions as a single numpy array."""
+        raise NotImplementedError
+
+
+class _EmptyLowdimDataset(BaseLowdimDataset):
+    """Fallback empty dataset returned by ``get_validation_dataset``."""
+
+    def __len__(self) -> int:
+        return 0
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        raise IndexError("Empty dataset")
+
+    def get_normalizer(self, mode: str = "limits", **kwargs):
+        raise RuntimeError("Cannot fit normalizer on empty dataset")

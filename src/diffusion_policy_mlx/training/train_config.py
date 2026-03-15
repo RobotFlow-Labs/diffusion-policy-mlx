@@ -49,8 +49,17 @@ class TrainConfig:
     save_every_n_epochs: int = 50
     top_k: int = 5
 
+    # -- Validation ------------------------------------------------------------
+    val_every_n_epochs: int = 10
+    n_val_batches: int = 10
+    early_stopping_patience: int = 0  # 0 = disabled
+
+    # -- Gradient clipping -----------------------------------------------------
+    max_grad_norm: float = 1.0  # 0 = disabled
+
     # -- Logging ---------------------------------------------------------------
     log_every_n_steps: int = 100
+    json_log_path: str = "logs/train_metrics.jsonl"
     use_wandb: bool = False
     wandb_project: str = "diffusion-policy-mlx"
 

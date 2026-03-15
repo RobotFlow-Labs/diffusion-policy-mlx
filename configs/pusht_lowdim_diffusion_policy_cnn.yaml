@@ -1,0 +1,50 @@
+# PushT Low-Dim Diffusion Policy (CNN/UNet) Configuration
+#
+# For low-dimensional observation space (no images, just agent_pos).
+# Uses smaller model dimensions since no vision encoder is needed.
+# Used with: python -m diffusion_policy_mlx.training.train_diffusion --config configs/pusht_lowdim_diffusion_policy_cnn.yaml
+
+# -- Data ------------------------------------------------------------------
+dataset_path: data/pusht_lowdim.zarr
+horizon: 16
+n_obs_steps: 2
+n_action_steps: 8
+
+# -- Model -----------------------------------------------------------------
+# Smaller dims for low-dimensional input
+down_dims: [128, 256, 512]
+kernel_size: 5
+n_groups: 8
+diffusion_step_embed_dim: 128
+num_train_timesteps: 100
+num_inference_steps: 100
+crop_shape: [76, 76]
+
+# -- Training --------------------------------------------------------------
+batch_size: 256
+num_epochs: 500
+lr: 1.0e-4
+weight_decay: 1.0e-6
+lr_scheduler: cosine
+lr_warmup_steps: 500
+ema_power: 0.75
+seed: 42
+
+# -- Validation ------------------------------------------------------------
+val_every_n_epochs: 10
+n_val_batches: 10
+early_stopping_patience: 50  # stop if no improvement for 50 epochs
+
+# -- Gradient clipping -----------------------------------------------------
+max_grad_norm: 1.0
+
+# -- Checkpointing ---------------------------------------------------------
+checkpoint_dir: checkpoints/pusht_lowdim_cnn
+save_every_n_epochs: 50
+top_k: 5
+
+# -- Logging ---------------------------------------------------------------
+log_every_n_steps: 50
+json_log_path: logs/pusht_lowdim_cnn_metrics.jsonl
+use_wandb: false
+wandb_project: diffusion-policy-mlx

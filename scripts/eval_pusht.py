@@ -4,17 +4,22 @@ This script loads a converted MLX checkpoint, runs inference against
 the PushT environment, and reports success rate, average reward,
 and inference timing.
 
-For now, the actual PushT env integration uses a synthetic observation
-generator (placeholder). The policy loading and inference scaffolding
-is fully functional.
+Supports two modes:
+  1. Real PushT environment (``--env real``, default) using the pymunk-based
+     PushT simulation with PushTImageRunner.
+  2. Synthetic environment (``--env synthetic``) for testing the evaluation
+     pipeline without physics dependencies.
 
 Usage:
-    python scripts/eval_pusht.py \
-        --checkpoint checkpoints/pusht_mlx \
+    python scripts/eval_pusht.py \\
+        --checkpoint checkpoints/pusht_mlx \\
         --n-episodes 50
 
-    # With synthetic environment (default):
+    # With real PushT environment (default):
     python scripts/eval_pusht.py --checkpoint dir/ --n-episodes 10
+
+    # With synthetic environment (testing only):
+    python scripts/eval_pusht.py --checkpoint dir/ --n-episodes 10 --env synthetic
 
     # Show per-episode details:
     python scripts/eval_pusht.py --checkpoint dir/ --n-episodes 10 --verbose
@@ -33,6 +38,8 @@ import mlx.core as mx
 import numpy as np
 
 from diffusion_policy_mlx.compat.schedulers import DDIMScheduler, DDPMScheduler
+from diffusion_policy_mlx.env.pusht_env import PushTEnv
+from diffusion_policy_mlx.env.pusht_image_runner import PushTImageRunner
 from diffusion_policy_mlx.model.diffusion.conditional_unet1d import ConditionalUnet1D
 
 logger = logging.getLogger(__name__)
@@ -317,7 +324,139 @@ class SyntheticPushTEnv:
 
 
 # ---------------------------------------------------------------------------
-# Evaluation loop
+# MLX Policy adapter for PushTImageRunner
+# ---------------------------------------------------------------------------
+
+
+class MLXPolicyAdapter:
+    """Wraps DiffusionPolicyInference for the PushTImageRunner interface.
+
+    The runner provides obs_dict with ``image`` (B, T, H, W, C) and
+    ``agent_pos`` (B, T, 2).  This adapter encodes images to features
+    (or uses a flat representation) and calls the underlying diffusion
+    policy to predict actions.
+    """
+
+    def __init__(self, policy: DiffusionPolicyInference):
+        self.policy = policy
+
+    def predict_action(self, obs_dict):
+        """Predict actions from observation dict.
+
+        For now, encode image as flattened mean features + agent_pos to
+        match the policy's expected obs_dim.  A proper vision encoder
+        would be used in a full pipeline.
+        """
+        import mlx.core as mx
+
+        images = obs_dict["image"]  # (B, T, H, W, C) float32
+        agent_pos = obs_dict["agent_pos"]  # (B, T, 2)
+
+        B, T = images.shape[:2]
+
+        # Simple feature extraction: downsample + flatten per timestep
+        # Then concatenate with agent_pos to form global conditioning.
+        # The target obs_dim per step is self.policy.obs_dim
+        obs_dim = self.policy.obs_dim
+        features_list = []
+        for t_idx in range(T):
+            img = images[:, t_idx]  # (B, H, W, C)
+            pos = agent_pos[:, t_idx]  # (B, 2)
+            # Flatten image to fixed-size feature via mean pooling on patches
+            # Image is (B, 96, 96, 3) => pool to (B, 512) to match obs_dim - 2
+            feat_dim = obs_dim - 2
+            # Simple: reshape to patches and mean-pool
+            img_flat = img.reshape(B, -1)  # (B, H*W*C)
+            # Downsample to feat_dim via strided selection
+            if img_flat.shape[1] >= feat_dim:
+                stride = img_flat.shape[1] // feat_dim
+                img_feat = img_flat[:, :feat_dim * stride:stride][:, :feat_dim]
+            else:
+                # Pad
+                img_feat = np.zeros((B, feat_dim), dtype=np.float32)
+                img_feat[:, :img_flat.shape[1]] = img_flat
+            # Normalize
+            img_feat = img_feat / 255.0
+            # Concat with agent_pos (normalized to [0, 1])
+            pos_norm = pos / 512.0
+            step_feat = np.concatenate([img_feat, pos_norm], axis=-1)  # (B, obs_dim)
+            features_list.append(step_feat)
+
+        # Stack and flatten across time
+        features = np.concatenate(features_list, axis=-1)  # (B, T * obs_dim)
+        features_mx = mx.array(features, dtype=mx.float32)
+
+        # Predict
+        actions_mx = self.policy.predict_action(features_mx)
+        mx.eval(actions_mx)
+
+        # Convert back to numpy and scale to workspace
+        actions = np.array(actions_mx)
+        # Clamp to workspace
+        actions = np.clip(actions * 512, 0, 512)
+
+        return actions
+
+
+# ---------------------------------------------------------------------------
+# Evaluation with real PushT environment
+# ---------------------------------------------------------------------------
+
+
+def evaluate_real(
+    checkpoint_dir: str,
+    n_episodes: int = 50,
+    action_dim: int = 2,
+    obs_dim: int = 514,
+    horizon: int = 16,
+    n_obs_steps: int = 2,
+    n_action_steps: int = 8,
+    num_inference_steps: int = 100,
+    use_ddim: bool = False,
+    ddim_steps: int = 10,
+    max_episode_steps: int = 300,
+    seed: int = 42,
+    verbose: bool = False,
+) -> dict:
+    """Run policy evaluation using the real PushT environment + runner."""
+    policy = load_policy(
+        checkpoint_dir=checkpoint_dir,
+        action_dim=action_dim,
+        obs_dim=obs_dim,
+        horizon=horizon,
+        n_obs_steps=n_obs_steps,
+        n_action_steps=n_action_steps,
+        num_inference_steps=num_inference_steps,
+        use_ddim=use_ddim,
+        ddim_steps=ddim_steps,
+    )
+
+    adapter = MLXPolicyAdapter(policy)
+    env = PushTEnv(render_size=96, max_steps=max_episode_steps)
+    runner = PushTImageRunner(
+        policy=adapter,
+        env=env,
+        n_obs_steps=n_obs_steps,
+        n_action_steps=n_action_steps,
+        max_steps=max_episode_steps,
+    )
+
+    result = runner.run(n_episodes=n_episodes, seed=seed, verbose=verbose)
+
+    print(f"\n{'=' * 50}")
+    print(f"Results over {n_episodes} episodes (real PushT env):")
+    print(f"  Success rate: {result['success_rate']:.1%}")
+    print(f"  Mean reward: {result['mean_reward']:.3f}")
+    print(f"  Mean max reward: {result['mean_max_reward']:.3f}")
+    print(f"  Mean episode length: {result['mean_episode_length']:.1f}")
+    print(f"  Mean inference time: {result['mean_inference_time'] * 1000:.1f}ms")
+    print(f"{'=' * 50}")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Evaluation loop (synthetic / legacy)
 # ---------------------------------------------------------------------------
 
 
@@ -463,6 +602,13 @@ def main():
         help="Number of evaluation episodes (default: 50)",
     )
     parser.add_argument(
+        "--env",
+        type=str,
+        choices=["real", "synthetic"],
+        default="real",
+        help="Environment mode: 'real' (PushT physics) or 'synthetic' (placeholder)",
+    )
+    parser.add_argument(
         "--use-ddim",
         action="store_true",
         help="Use DDIM scheduler for faster inference",
@@ -492,14 +638,24 @@ def main():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    evaluate(
-        checkpoint_dir=args.checkpoint,
-        n_episodes=args.n_episodes,
-        use_ddim=args.use_ddim,
-        ddim_steps=args.ddim_steps,
-        seed=args.seed,
-        verbose=args.verbose,
-    )
+    if args.env == "real":
+        evaluate_real(
+            checkpoint_dir=args.checkpoint,
+            n_episodes=args.n_episodes,
+            use_ddim=args.use_ddim,
+            ddim_steps=args.ddim_steps,
+            seed=args.seed,
+            verbose=args.verbose,
+        )
+    else:
+        evaluate(
+            checkpoint_dir=args.checkpoint,
+            n_episodes=args.n_episodes,
+            use_ddim=args.use_ddim,
+            ddim_steps=args.ddim_steps,
+            seed=args.seed,
+            verbose=args.verbose,
+        )
 
 
 if __name__ == "__main__":
