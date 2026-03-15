@@ -10,6 +10,12 @@ from diffusion_policy_mlx.common.dict_util import (
     dict_apply_split,
 )
 from diffusion_policy_mlx.common.json_logger import JsonLogger
+from diffusion_policy_mlx.common.metal_utils import (
+    get_metal_info,
+    log_memory,
+    print_metal_status,
+    reset_peak_memory,
+)
 from diffusion_policy_mlx.common.pytorch_util import (
     optimizer_to,
     param_count,
@@ -21,6 +27,10 @@ __all__ = [
     "dict_apply_reduce",
     "dict_apply_split",
     "JsonLogger",
+    "get_metal_info",
+    "log_memory",
+    "print_metal_status",
+    "reset_peak_memory",
     "optimizer_to",
     "param_count",
     "replace_submodules",

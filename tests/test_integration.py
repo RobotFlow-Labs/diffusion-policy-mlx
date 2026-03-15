@@ -10,7 +10,6 @@ and synthetic data so they finish in seconds, not minutes.
 from __future__ import annotations
 
 import tempfile
-import time
 from pathlib import Path
 
 import mlx.core as mx
@@ -391,15 +390,30 @@ class TestEMAImproves:
 # ---------------------------------------------------------------------------
 
 
-class TestDDIMFasterThanDDPM:
-    """DDIM with fewer steps should be faster but still produce valid actions."""
+class TestDDIMFewerStepsThanDDPM:
+    """DDIM uses fewer denoising steps than DDPM and both produce valid actions."""
 
-    def test_ddim_faster_than_ddpm(self):
-        """DDIM with fewer inference steps should be faster than DDPM and
-        still produce valid (no NaN, correct shape) actions."""
+    def test_ddim_fewer_steps_than_ddpm(self):
+        """DDIM uses fewer denoising steps than DDPM.
+
+        Instead of comparing wall-clock time (which is noisy due to Metal
+        shader caching and system load), we verify the deterministic property
+        that DDIM uses fewer scheduler steps than DDPM, and that both
+        schedulers produce valid (no NaN, correct shape) actions.
+        """
+        # Compare scheduler step counts (deterministic, no timing noise)
+        ddpm_scheduler = DDPMScheduler(num_train_timesteps=100)
+        ddpm_scheduler.set_timesteps(100)
+        ddim_scheduler = DDIMScheduler(num_train_timesteps=100)
+        ddim_scheduler.set_timesteps(10)
+        assert len(ddim_scheduler.timesteps) < len(ddpm_scheduler.timesteps), (
+            f"DDIM steps ({len(ddim_scheduler.timesteps)}) should be fewer "
+            f"than DDPM steps ({len(ddpm_scheduler.timesteps)})"
+        )
+
+        # Verify both produce valid actions through the full policy
         mx.random.seed(42)
 
-        # DDPM with full steps
         ddpm_policy = _make_small_policy(
             num_train_timesteps=10,
             num_inference_steps=10,
@@ -408,7 +422,6 @@ class TestDDIMFasterThanDDPM:
         ddpm_policy.set_normalizer(_make_identity_normalizer())
         mx.eval(ddpm_policy.parameters())
 
-        # DDIM with fewer steps
         ddim_policy = _make_small_policy(
             num_train_timesteps=10,
             num_inference_steps=3,
@@ -426,37 +439,11 @@ class TestDDIMFasterThanDDPM:
         }
         mx.eval(obs["image"], obs["agent_pos"])
 
-        # Warm up both policies (first call has compilation overhead)
-        mx.random.seed(100)
-        _ = ddpm_policy.predict_action(obs)
-        mx.eval(_["action"])
-        mx.random.seed(100)
-        _ = ddim_policy.predict_action(obs)
-        mx.eval(_["action"])
-
-        # Time DDPM
-        mx.random.seed(200)
-        t0 = time.perf_counter()
-        ddpm_result = ddpm_policy.predict_action(obs)
-        mx.eval(ddpm_result["action"])
-        ddpm_time = time.perf_counter() - t0
-
-        # Time DDIM (fewer steps)
-        mx.random.seed(200)
-        t0 = time.perf_counter()
-        ddim_result = ddim_policy.predict_action(obs)
-        mx.eval(ddim_result["action"])
-        ddim_time = time.perf_counter() - t0
-
-        # DDIM should be faster (or at least not dramatically slower).
-        # Metal shader caching makes timing noisy — use very generous margin.
-        # The real value of this test is validating both paths produce valid output.
-        assert ddim_time < ddpm_time * 10.0, (
-            f"DDIM ({ddim_time:.3f}s) dramatically slower than DDPM ({ddpm_time:.3f}s)"
-        )
-
         # Both should produce valid outputs
-        for name, result in [("DDPM", ddpm_result), ("DDIM", ddim_result)]:
+        for name, policy in [("DDPM", ddpm_policy), ("DDIM", ddim_policy)]:
+            mx.random.seed(200)
+            result = policy.predict_action(obs)
+            mx.eval(result["action"], result["action_pred"])
             assert result["action"].shape == (1, 8, 2), (
                 f"{name} action shape wrong: {result['action'].shape}"
             )

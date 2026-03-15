@@ -184,6 +184,11 @@ class DiffusionTransformerLowdimPolicy(nn.Module):
         # Run sampling
         nsample = self.conditional_sample(cond_data, cond_mask, cond=cond)
 
+        # Materialize denoising result before post-processing.
+        # Without this, the entire lazy computation graph from all denoising
+        # steps would be kept alive, causing unbounded memory growth.
+        mx.eval(nsample)
+
         # Extract action dims and unnormalize
         naction_pred = nsample[..., :Da]
         action_pred = self.normalizer["action"].unnormalize(naction_pred)

@@ -113,6 +113,29 @@ class TestCrossFramework:
 
         np.testing.assert_allclose(mlx_out, torch_out, atol=1e-4, rtol=1e-4)
 
+    def test_resnet34_matches_torchvision(self):
+        """With same weights, MLX ResNet34 output should match PyTorch within tolerance."""
+        torch_model = torchvision.models.resnet34(weights=None)
+        torch_model.fc = torch.nn.Identity()
+        torch_model.eval()
+
+        mlx_model = resnet34()
+        mlx_model.fc = Identity()
+
+        state_dict = torch_model.state_dict()
+        load_torchvision_weights(mlx_model, state_dict)
+        mlx_model.eval()
+
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(2, 3, 224, 224).astype(np.float32)
+
+        with torch.no_grad():
+            torch_out = torch_model(torch.tensor(x_np)).numpy()
+
+        mlx_out = np.array(mlx_model(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=1e-4, rtol=1e-4)
+
     def test_resnet50_matches_torchvision(self):
         """With same weights, MLX ResNet50 output should match PyTorch within tolerance."""
         torch_model = torchvision.models.resnet50(weights=None)

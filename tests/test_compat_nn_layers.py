@@ -492,6 +492,261 @@ class TestDictOfTensorMixin:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Conv2d numerics vs torch (P0)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+class TestConv2dNumerics:
+    def test_matches_torch(self):
+        """Conv2d output matches PyTorch given same weights."""
+        in_c, out_c, kernel = 3, 16, 3
+        padding = 1
+
+        mlx_conv = Conv2d(in_c, out_c, kernel, padding=padding, bias=True)
+        torch_conv = torch_nn.Conv2d(in_c, out_c, kernel, padding=padding, bias=True)
+
+        # Copy weights: torch weight is (C_out, C_in, H, W) = OIHW
+        # MLX Conv2d internal weight is (C_out, H, W, C_in) = OHWI
+        torch_w = torch_conv.weight.detach().numpy()  # (C_out, C_in, kH, kW)
+        torch_b = torch_conv.bias.detach().numpy()
+
+        mlx_w = np.transpose(torch_w, (0, 2, 3, 1))  # (C_out, kH, kW, C_in)
+        mlx_conv._conv.weight = mx.array(mlx_w)
+        mlx_conv._conv.bias = mx.array(torch_b)
+
+        x_np = np.random.randn(2, in_c, 8, 8).astype(np.float32)
+        torch_out = torch_conv(torch.tensor(x_np)).detach().numpy()
+        mlx_out = np.array(mlx_conv(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=1e-3, rtol=1e-4)
+
+    def test_stride_matches_torch(self):
+        """Conv2d with stride=2 matches PyTorch."""
+        in_c, out_c, kernel = 3, 8, 3
+        stride, padding = 2, 1
+
+        mlx_conv = Conv2d(in_c, out_c, kernel, stride=stride, padding=padding, bias=True)
+        torch_conv = torch_nn.Conv2d(in_c, out_c, kernel, stride=stride, padding=padding, bias=True)
+
+        torch_w = torch_conv.weight.detach().numpy()
+        torch_b = torch_conv.bias.detach().numpy()
+        mlx_w = np.transpose(torch_w, (0, 2, 3, 1))
+        mlx_conv._conv.weight = mx.array(mlx_w)
+        mlx_conv._conv.bias = mx.array(torch_b)
+
+        x_np = np.random.randn(1, in_c, 16, 16).astype(np.float32)
+        torch_out = torch_conv(torch.tensor(x_np)).detach().numpy()
+        mlx_out = np.array(mlx_conv(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=1e-3, rtol=1e-4)
+
+    def test_nonzero_output(self):
+        """Conv2d produces non-trivial output."""
+        conv = Conv2d(3, 16, 3, padding=1)
+        x = mx.random.normal((2, 3, 8, 8))
+        out = conv(x)
+        mx.eval(out)
+        assert float(mx.std(out)) > 0.01, "Conv2d output is trivially zero"
+
+
+# ---------------------------------------------------------------------------
+# BatchNorm2d numerics vs torch (P0)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+class TestBatchNorm2dNumerics:
+    def test_matches_torch_eval_mode(self):
+        """BatchNorm2d output matches PyTorch in eval mode."""
+        num_features = 16
+        B, H, W = 2, 4, 4
+
+        mlx_bn = BatchNorm2d(num_features)
+        torch_bn = torch_nn.BatchNorm2d(num_features)
+
+        # Copy weights and running stats
+        torch_bn.eval()
+        torch_w = torch_bn.weight.detach().numpy()
+        torch_b = torch_bn.bias.detach().numpy()
+        torch_rm = torch_bn.running_mean.detach().numpy()
+        torch_rv = torch_bn.running_var.detach().numpy()
+
+        mlx_bn._bn.weight = mx.array(torch_w)
+        mlx_bn._bn.bias = mx.array(torch_b)
+        mlx_bn._bn.running_mean = mx.array(torch_rm)
+        mlx_bn._bn.running_var = mx.array(torch_rv)
+        mlx_bn.eval()
+
+        x_np = np.random.randn(B, num_features, H, W).astype(np.float32)
+
+        with torch.no_grad():
+            torch_out = torch_bn(torch.tensor(x_np)).numpy()
+
+        mlx_out = np.array(mlx_bn(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=1e-4, rtol=1e-4)
+
+    def test_nonzero_output(self):
+        """BatchNorm2d produces non-trivial output."""
+        bn = BatchNorm2d(8)
+        x = mx.random.normal((4, 8, 4, 4))
+        out = bn(x)
+        mx.eval(out)
+        assert float(mx.std(out)) > 0.01, "BatchNorm2d output is trivially zero"
+
+
+# ---------------------------------------------------------------------------
+# GroupNorm NCHW cross-framework test (P1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+class TestGroupNormNCHW:
+    def test_matches_torch_nchw(self):
+        """GroupNorm on (B,C,H,W) matches PyTorch."""
+        B, C, H, W = 2, 16, 8, 8
+        num_groups = 4
+
+        mlx_gn = GroupNorm(num_groups, C)
+        torch_gn = torch_nn.GroupNorm(num_groups, C)
+
+        # Copy weights
+        torch_w = torch_gn.weight.detach().numpy()
+        torch_b = torch_gn.bias.detach().numpy()
+        mlx_gn._gn.weight = mx.array(torch_w)
+        mlx_gn._gn.bias = mx.array(torch_b)
+
+        x_np = np.random.randn(B, C, H, W).astype(np.float32)
+        torch_out = torch_gn(torch.tensor(x_np)).detach().numpy()
+        mlx_out = np.array(mlx_gn(mx.array(x_np)))
+
+        np.testing.assert_allclose(mlx_out, torch_out, atol=1e-4, rtol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Numerical stability tests (P1)
+# ---------------------------------------------------------------------------
+
+
+class TestNumericalStability:
+    def test_conv1d_nan_propagation(self):
+        """NaN inputs produce NaN outputs (no silent corruption)."""
+        conv = Conv1d(4, 8, 3, padding=1)
+        x = mx.random.normal((1, 4, 10))
+        # Inject NaN at one position
+        x_np = np.array(x)
+        x_np[0, 0, 3] = float("nan")
+        x_nan = mx.array(x_np)
+        out = conv(x_nan)
+        mx.eval(out)
+        out_np = np.array(out)
+        # At least some outputs should be NaN (the NaN propagates through convolution)
+        assert np.any(np.isnan(out_np)), "NaN input did not propagate through Conv1d"
+
+    def test_mish_large_input(self):
+        """Mish handles large inputs without overflow (threshold at x>20)."""
+        x = mx.array([0.0, 20.0, 50.0, 100.0, 1000.0])
+        out = mish(x)
+        mx.eval(out)
+        out_np = np.array(out)
+        assert not np.any(np.isnan(out_np)), f"NaN in mish output: {out_np}"
+        assert not np.any(np.isinf(out_np)), f"Inf in mish output: {out_np}"
+        # For large x, mish(x) ≈ x (since tanh(softplus(x)) → 1)
+        np.testing.assert_allclose(out_np[3], 100.0, atol=1e-2)
+        np.testing.assert_allclose(out_np[4], 1000.0, atol=1e-2)
+
+    def test_mish_negative_large_input(self):
+        """Mish handles large negative inputs without issues."""
+        x = mx.array([-50.0, -100.0, -1000.0])
+        out = mish(x)
+        mx.eval(out)
+        out_np = np.array(out)
+        assert not np.any(np.isnan(out_np)), f"NaN in mish output: {out_np}"
+        assert not np.any(np.isinf(out_np)), f"Inf in mish output: {out_np}"
+        # For large negative x, mish(x) → 0
+        np.testing.assert_allclose(out_np, 0.0, atol=1e-5)
+
+    def test_groupnorm_nan_propagation(self):
+        """GroupNorm with NaN input produces NaN (doesn't silently zero)."""
+        gn = GroupNorm(4, 16)
+        x = mx.random.normal((1, 16, 10))
+        x_np = np.array(x)
+        x_np[0, 0, 0] = float("nan")
+        x_nan = mx.array(x_np)
+        out = gn(x_nan)
+        mx.eval(out)
+        out_np = np.array(out)
+        # NaN in one group should propagate to that group's outputs
+        assert np.any(np.isnan(out_np)), "NaN input did not propagate through GroupNorm"
+
+    def test_batchnorm2d_nan_propagation(self):
+        """BatchNorm2d with NaN input produces NaN (doesn't silently zero)."""
+        bn = BatchNorm2d(4)
+        x = mx.random.normal((2, 4, 4, 4))
+        x_np = np.array(x)
+        x_np[0, 0, 0, 0] = float("nan")
+        x_nan = mx.array(x_np)
+        out = bn(x_nan)
+        mx.eval(out)
+        out_np = np.array(out)
+        assert np.any(np.isnan(out_np)), "NaN input did not propagate through BatchNorm2d"
+
+
+# ---------------------------------------------------------------------------
+# interpolate_1d floor correctness (P1 fix #7)
+# ---------------------------------------------------------------------------
+
+
+class TestInterpolate1dFloor:
+    def test_floor_vs_truncate_non_integer_ratio(self):
+        """interpolate_1d with non-integer ratio uses floor (not truncate).
+
+        For nearest-neighbor, index = floor(i * L / target_len).
+        With negative intermediates (not applicable here since i>=0, L>0),
+        floor and truncate differ. But we also verify the general correctness
+        of the nearest-neighbor index computation.
+        """
+        # Create a signal where each sample has a unique value
+        x_np = np.arange(1, 8, dtype=np.float32).reshape(1, 1, 7)  # L=7
+        x = mx.array(x_np)
+
+        # Upsample to 10: ratio = 7/10 = 0.7
+        # floor(i * 7 / 10) for i=0..9: floor([0, 0.7, 1.4, 2.1, 2.8, 3.5, 4.2, 4.9, 5.6, 6.3])
+        #                                  = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6]
+        out = interpolate_1d(x, size=10)
+        mx.eval(out)
+        out_np = np.array(out).flatten()
+
+        expected_indices = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6]
+        expected_values = np.array([x_np.flatten()[i] for i in expected_indices])
+        np.testing.assert_array_equal(out_np, expected_values)
+
+    def test_upsample_preserves_values(self):
+        """interpolate_1d nearest-neighbor: output values are from input."""
+        x_np = np.array([[[10.0, 20.0, 30.0, 40.0]]])  # (1,1,4)
+        x = mx.array(x_np)
+        out = interpolate_1d(x, scale_factor=3)  # 4 -> 12
+        mx.eval(out)
+        out_np = np.array(out).flatten()
+        # Every output value must be one of the input values
+        for v in out_np:
+            assert v in [10.0, 20.0, 30.0, 40.0], f"Unexpected interpolated value {v}"
+
+    def test_downsample_by_size(self):
+        """interpolate_1d can downsample."""
+        x = mx.random.normal((2, 4, 20))
+        out = interpolate_1d(x, size=5)
+        mx.eval(out)
+        assert out.shape == (2, 4, 5)
+
+
+# ---------------------------------------------------------------------------
+# Import smoke test
+# ---------------------------------------------------------------------------
+
+
 def test_compat_import_star():
     """Verify that `from diffusion_policy_mlx.compat import *` works."""
     import diffusion_policy_mlx.compat as compat

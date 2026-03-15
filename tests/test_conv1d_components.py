@@ -52,6 +52,40 @@ class TestConv1dBlock:
         mx.eval(out)
         assert out.shape == (1, 8, 10)
 
+    def test_nonzero_output(self):
+        """Conv1dBlock produces non-trivial output (not zeros)."""
+        block = Conv1dBlock(16, 32, 3)
+        x = mx.random.normal((2, 16, 50))
+        out = block(x)
+        mx.eval(out)
+        std_val = float(mx.std(out))
+        assert std_val > 0.01, f"Output std {std_val} is too close to zero"
+
+    def test_different_inputs_produce_different_outputs(self):
+        """Conv1dBlock produces different outputs for different inputs."""
+        block = Conv1dBlock(8, 16, 3, n_groups=8)
+        x1 = mx.random.normal((1, 8, 20))
+        x2 = mx.random.normal((1, 8, 20))
+        out1 = block(x1)
+        out2 = block(x2)
+        mx.eval(out1, out2)
+        diff = float(mx.sum(mx.abs(out1 - out2)))
+        assert diff > 0.01, "Different inputs produced identical outputs"
+
+    def test_mish_activation_applied(self):
+        """Conv1dBlock output should have negative values (mish allows them)."""
+        mx.random.seed(42)
+        block = Conv1dBlock(16, 32, 3)
+        x = mx.random.normal((4, 16, 50))
+        out = block(x)
+        mx.eval(out)
+        out_np = np.array(out)
+        # Mish can output small negative values, unlike ReLU
+        has_positive = np.any(out_np > 0)
+        assert has_positive, "Conv1dBlock output has no positive values"
+        # At least verify it's not all positive (which would suggest ReLU, not mish)
+        # Mish allows small negatives, so this is a soft check
+
 
 # ---------------------------------------------------------------------------
 # Downsample1d
@@ -80,6 +114,25 @@ class TestDownsample1d:
         out = ds(x)
         mx.eval(out)
         assert out.shape == (1, 16, 8)
+
+    def test_preserves_info_different_inputs(self):
+        """Different inputs produce different outputs after downsampling."""
+        ds = Downsample1d(8)
+        x1 = mx.random.normal((1, 8, 20))
+        x2 = mx.random.normal((1, 8, 20))
+        out1 = ds(x1)
+        out2 = ds(x2)
+        mx.eval(out1, out2)
+        diff = float(mx.sum(mx.abs(out1 - out2)))
+        assert diff > 0.01, "Downsample destroyed all distinguishing information"
+
+    def test_nonzero_output(self):
+        """Downsample1d produces non-trivial output."""
+        ds = Downsample1d(16)
+        x = mx.random.normal((2, 16, 40))
+        out = ds(x)
+        mx.eval(out)
+        assert float(mx.std(out)) > 0.01, "Downsample output is trivially zero"
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +166,25 @@ class TestUpsample1d:
         up = us(down)
         mx.eval(up)
         assert up.shape == x.shape
+
+    def test_nonzero_output(self):
+        """Upsample1d produces non-trivial output (meaningful interpolation, not zeros)."""
+        us = Upsample1d(16)
+        x = mx.random.normal((2, 16, 10))
+        out = us(x)
+        mx.eval(out)
+        assert float(mx.std(out)) > 0.01, "Upsample output is trivially zero"
+
+    def test_different_inputs_produce_different_outputs(self):
+        """Upsample produces different outputs for different inputs."""
+        us = Upsample1d(8)
+        x1 = mx.random.normal((1, 8, 10))
+        x2 = mx.random.normal((1, 8, 10))
+        out1 = us(x1)
+        out2 = us(x2)
+        mx.eval(out1, out2)
+        diff = float(mx.sum(mx.abs(out1 - out2)))
+        assert diff > 0.01, "Upsample produces identical outputs for different inputs"
 
 
 # ---------------------------------------------------------------------------

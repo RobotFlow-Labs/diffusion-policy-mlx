@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -521,14 +522,14 @@ def evaluate(
         step_count = 0
         total_inference_time = 0.0
         obs_history: List[np.ndarray] = []
-        action_queue: List[np.ndarray] = []
+        action_queue: deque[np.ndarray] = deque()
 
         while not done:
             obs_history.append(obs)
 
             # Use queued actions if available
             if action_queue:
-                action = action_queue.pop(0)
+                action = action_queue.popleft()
             else:
                 # Build obs features from history
                 if len(obs_history) >= n_obs_steps:

@@ -102,7 +102,7 @@ def interpolate_1d(
 
     # Nearest-neighbour via index repeat
     indices = mx.arange(target_len)
-    src_indices = (indices.astype(mx.float32) * L / target_len).astype(mx.int32)
+    src_indices = mx.floor(indices.astype(mx.float32) * L / target_len).astype(mx.int32)
 
     # Transpose to (B, L, C), index, transpose back
     x_nlc = mx.transpose(x, axes=(0, 2, 1))  # (B, L, C)

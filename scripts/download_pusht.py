@@ -12,6 +12,7 @@ data server hosted at Columbia University.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import sys
 import zipfile
@@ -22,6 +23,41 @@ PUSHT_URL = "https://diffusion-policy.cs.columbia.edu/data/training/pusht_cchi_v
 
 # Expected output directory name after extraction
 ZARR_DIR_NAME = "pusht_cchi_v7_replay.zarr"
+
+# SHA-256 of the zip file.  Set to None until the canonical hash is known;
+# when None the download still succeeds but prints the computed hash so
+# the user can pin it for future runs.
+PUSHT_ZIP_SHA256: str | None = None
+
+
+def _verify_checksum(file_path: Path, expected_hash: str | None) -> bool:
+    """Verify SHA-256 checksum of *file_path*.
+
+    Returns True if the hash matches *expected_hash*, or if
+    *expected_hash* is None (prints the computed hash for the user).
+    """
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    computed = sha256.hexdigest()
+
+    if expected_hash is None:
+        print(f"  SHA-256: {computed}")
+        print("  (no expected hash configured — set PUSHT_ZIP_SHA256 to pin)")
+        return True
+
+    if computed != expected_hash:
+        print(
+            f"  Checksum mismatch!\n"
+            f"    Expected: {expected_hash}\n"
+            f"    Got:      {computed}",
+            file=sys.stderr,
+        )
+        return False
+
+    print(f"  Checksum OK: {computed}")
+    return True
 
 
 def _progress_hook(block_num: int, block_size: int, total_size: int) -> None:
@@ -67,6 +103,14 @@ def download_pusht(output_dir: str = "data") -> str:
     urlretrieve(PUSHT_URL, str(zip_path), reporthook=_progress_hook)
     print()  # newline after progress
 
+    # Verify download integrity
+    if not _verify_checksum(zip_path, PUSHT_ZIP_SHA256):
+        zip_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            "Download checksum verification failed. "
+            "The file may be corrupted — please retry."
+        )
+
     print("Extracting...")
     with zipfile.ZipFile(str(zip_path), "r") as zf:
         # Validate against path traversal (Zip Slip)
@@ -89,7 +133,10 @@ def download_pusht(output_dir: str = "data") -> str:
 
 
 def _verify(zarr_path: Path) -> None:
-    """Quick integrity check on the extracted zarr."""
+    """Quick integrity check on the extracted zarr.
+
+    Raises ``RuntimeError`` if the dataset structure is invalid.
+    """
     import zarr
 
     try:
@@ -113,7 +160,7 @@ def _verify(zarr_path: Path) -> None:
         assert action_shape[0] == n_steps, "action length mismatch"
         print("  Integrity check passed.")
     except Exception as exc:
-        print(f"  WARNING: Integrity check failed: {exc}", file=sys.stderr)
+        raise RuntimeError(f"Dataset integrity check failed: {exc}") from exc
 
 
 def main() -> None:

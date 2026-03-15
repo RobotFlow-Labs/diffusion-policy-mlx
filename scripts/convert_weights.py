@@ -463,14 +463,14 @@ def convert_with_shape_matching(
 def convert_checkpoint(
     checkpoint_path: str,
     output_dir: str,
-    format: str = "npz",
+    output_format: str = "npz",
 ) -> None:
     """Convert a full PyTorch checkpoint to MLX format.
 
     Args:
         checkpoint_path: Path to .ckpt file
         output_dir: Directory to save converted weights
-        format: Output format ('npz' or 'safetensors')
+        output_format: Output format ('npz' or 'safetensors')
     """
     if not HAS_TORCH:
         raise RuntimeError(
@@ -505,7 +505,7 @@ def convert_checkpoint(
     # Convert model weights
     logger.info("Converting model weights (%d parameters)", len(model_state))
     mlx_weights = convert_state_dict(model_state)
-    _save_weights(mlx_weights, output / f"model.{format}", format)
+    _save_weights(mlx_weights, output / f"model.{output_format}", output_format)
     logger.info(
         "Saved model weights: %d parameters, shapes: %s",
         len(mlx_weights),
@@ -516,20 +516,20 @@ def convert_checkpoint(
     if ema_state is not None:
         logger.info("Converting EMA weights (%d parameters)", len(ema_state))
         mlx_ema = convert_state_dict(ema_state)
-        _save_weights(mlx_ema, output / f"ema.{format}", format)
+        _save_weights(mlx_ema, output / f"ema.{output_format}", output_format)
         logger.info("Saved EMA weights: %d parameters", len(mlx_ema))
 
     # Extract and save normalizer
     normalizer_state = extract_normalizer(model_state)
     if normalizer_state:
         logger.info("Saving normalizer state (%d entries)", len(normalizer_state))
-        _save_weights(normalizer_state, output / f"normalizer.{format}", format)
+        _save_weights(normalizer_state, output / f"normalizer.{output_format}", output_format)
 
     # Save conversion metadata
     meta_path = output / "conversion_meta.txt"
     with open(meta_path, "w") as f:
         f.write(f"source: {checkpoint_path}\n")
-        f.write(f"format: {format}\n")
+        f.write(f"format: {output_format}\n")
         f.write(f"model_params: {len(mlx_weights)}\n")
         if ema_state:
             f.write(f"ema_params: {len(mlx_ema)}\n")
@@ -545,11 +545,11 @@ def convert_checkpoint(
     print(f"  Normalizer entries: {len(normalizer_state)}")
 
 
-def _save_weights(weights: Dict[str, mx.array], path: Path, format: str) -> None:
+def _save_weights(weights: Dict[str, mx.array], path: Path, output_format: str) -> None:
     """Save weights in the specified format."""
-    if format == "npz":
+    if output_format == "npz":
         mx.savez(str(path), **weights)
-    elif format == "safetensors":
+    elif output_format == "safetensors":
         try:
             from safetensors.numpy import save_file
 
@@ -560,7 +560,7 @@ def _save_weights(weights: Dict[str, mx.array], path: Path, format: str) -> None
             npz_path = path.with_suffix(".npz")
             mx.savez(str(npz_path), **weights)
     else:
-        raise ValueError(f"Unknown format: {format}")
+        raise ValueError(f"Unknown format: {output_format}")
 
 
 def main():
@@ -599,7 +599,7 @@ def main():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    convert_checkpoint(args.checkpoint, args.output, args.format)
+    convert_checkpoint(args.checkpoint, args.output, output_format=args.format)
 
 
 if __name__ == "__main__":

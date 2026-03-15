@@ -224,6 +224,11 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             global_cond=global_cond,
         )
 
+        # Materialize denoising result before post-processing.
+        # Without this, the entire lazy computation graph from all denoising
+        # steps would be kept alive, causing unbounded memory growth.
+        mx.eval(nsample)
+
         # Unnormalize prediction
         naction_pred = nsample[..., :Da]
         action_pred = self.normalizer["action"].unnormalize(naction_pred)

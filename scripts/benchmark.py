@@ -356,7 +356,6 @@ def benchmark_pytorch_forward(
 
     try:
         # Import upstream model
-        __import__("sys").path[:]  # ensure sys is importable
         from diffusion_policy.model.diffusion.conditional_unet1d import (
             ConditionalUnet1D as TorchUnet,
         )

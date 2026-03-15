@@ -361,6 +361,8 @@ class PushTImageDataset(BaseImageDataset):
         return len(self.sampler)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
+        if idx < 0 or idx >= len(self):
+            raise IndexError(f"Index {idx} out of range for dataset of size {len(self)}")
         sample = self.sampler.sample_sequence(idx)
 
         # Image: (T, 96, 96, 3) uint8 -> (T, 3, 96, 96) float32 [0,1]

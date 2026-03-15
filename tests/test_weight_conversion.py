@@ -487,3 +487,55 @@ class TestRoundTrip:
 
         # num_batches_tracked should be skipped
         assert all("num_batches_tracked" not in k for k in result)
+
+
+# ---------------------------------------------------------------------------
+# Weight conversion + forward pass integration test (P0)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not HAS_TORCH, reason="torch/torchvision not installed")
+class TestConvertAndForwardPass:
+    """Convert PyTorch ResNet weights to MLX and verify forward pass matches."""
+
+    def test_resnet18_convert_and_forward(self):
+        """Convert torchvision ResNet18 weights and verify forward pass match."""
+        import torchvision
+
+        from diffusion_policy_mlx.compat.vision import (
+            Identity,
+            load_torchvision_weights,
+            resnet18,
+        )
+
+        # 1. Create torchvision ResNet18
+        torch_model = torchvision.models.resnet18(weights=None)
+        torch_model.fc = torch.nn.Identity()
+        torch_model.eval()
+
+        # 2. Generate random input
+        rng = np.random.RandomState(123)
+        x_np = rng.randn(2, 3, 224, 224).astype(np.float32)
+
+        # 3. Get PyTorch output
+        with torch.no_grad():
+            torch_out = torch_model(torch.tensor(x_np)).numpy()
+
+        # 4. Convert weights using load_torchvision_weights (our conversion path)
+        mlx_model = resnet18()
+        mlx_model.fc = Identity()
+        state_dict = torch_model.state_dict()
+        load_torchvision_weights(mlx_model, state_dict)
+        mlx_model.eval()
+
+        # 5. Get MLX output
+        import mlx.core as mx
+
+        mlx_out = np.array(mlx_model(mx.array(x_np)))
+
+        # 6. Compare — must match within tolerance
+        np.testing.assert_allclose(mlx_out, torch_out, atol=1e-3, rtol=1e-3)
+
+        # 7. Verify outputs are non-trivial
+        assert np.std(mlx_out) > 0.01, "MLX model output is trivially zero"
+        assert np.std(torch_out) > 0.01, "PyTorch model output is trivially zero"
